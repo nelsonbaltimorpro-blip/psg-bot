@@ -1,0 +1,59 @@
+name: PSG Watch Party Bot
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check billetterie
+        run: |
+          pip install requests beautifulsoup4 -q
+          python - <<'EOF'
+          import requests, smtplib, sys
+          from bs4 import BeautifulSoup
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+          import os
+
+          GMAIL = "nelson.baltimor.pro@gmail.com"
+          PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
+
+          TARGETS = [
+            {"name": "Billetterie PSG", "url": "https://billetterie.psg.fr/fr/", "keywords": ["watch party","arsenal","30 mai","viewing party"], "negative": ["alerte billetterie"]},
+            {"name": "PSG.fr Watch Party", "url": "https://www.psg.fr/content/vivez-la-finale-de-champions-league-au-parc-des-princes-psg-arsenal-ucl-parc-des-princes-viewing-party-2025-2026", "keywords": ["acheter","réserver","places disponibles","buy","get tickets"], "negative": []},
+            {"name": "Qlic Alerte", "url": "https://qlic.it/1796571", "keywords": ["acheter","disponible","buy","available","sold out"], "negative": []},
+          ]
+
+          HEADERS = {"User-Agent": "Mozilla/5.0"}
+          found_any = False
+
+          for t in TARGETS:
+            try:
+              r = requests.get(t["url"], headers=HEADERS, timeout=15)
+              text = BeautifulSoup(r.text, "html.parser").get_text().lower()
+              hits = [k for k in t["keywords"] if k in text]
+              negs = [k for k in t["negative"] if k in text]
+              if hits and not negs:
+                found_any = True
+                msg = MIMEMultipart()
+                msg["From"] = GMAIL
+                msg["To"] = GMAIL
+                msg["Subject"] = "🚨 PSG WATCH PARTY — BILLETTERIE OUVERTE !"
+                body = f"Source: {t['name']}\nMots-clés: {hits}\n\nhttps://billetterie.psg.fr/fr/"
+                msg.attach(MIMEText(body, "plain"))
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+                  s.login(GMAIL, PASSWORD)
+                  s.send_message(msg)
+                print(f"ALERTE envoyée — {t['name']}")
+            except Exception as e:
+              print(f"Erreur {t['name']}: {e}")
+
+          if not found_any:
+            print("Pas encore disponible.")
+          EOF
+        env:
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
