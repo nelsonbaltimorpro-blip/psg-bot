@@ -27,15 +27,54 @@ jobs:
           }
 
           TARGETS = [
-            {"name": "Billetterie PSG principale", "url": "https://billetterie.psg.fr/fr/", "keywords": ["watch party","arsenal","30 mai","viewing party","finale","retransmission"], "negative": ["alerte billetterie"]},
-            {"name": "Billetterie PSG listing", "url": "https://billetterie.psg.fr/fr/listing-events", "keywords": ["watch party","arsenal","finale","viewing","30 mai"], "negative": []},
-            {"name": "PSG.fr Watch Party", "url": "https://www.psg.fr/content/vivez-la-finale-de-champions-league-au-parc-des-princes-psg-arsenal-ucl-parc-des-princes-viewing-party-2025-2026", "keywords": ["acheter","réserver","places disponibles","buy","get tickets","book"], "negative": []},
-            {"name": "Qlic alerte officielle", "url": "https://qlic.it/1796571", "keywords": ["acheter","disponible","buy","available","sold out","commander"], "negative": []},
-            {"name": "PSG.fr billetterie", "url": "https://www.psg.fr/billetterie", "keywords": ["watch party","arsenal","finale","viewing","30 mai"], "negative": []},
-            {"name": "CulturePSG", "url": "https://www.culturepsg.com/bg/news/Places", "keywords": ["watch party","arsenal","viewing party","billetterie ouverte","places disponibles","30 mai"], "negative": []},
-            {"name": "Le Parisien PSG", "url": "https://www.leparisien.fr/sports/football/psg/", "keywords": ["watch party","billetterie ouverte","places disponibles","viewing party","arsenal"], "negative": []},
-            {"name": "RMC Sport", "url": "https://rmcsport.bfmtv.com/football/ligue-des-champions/", "keywords": ["watch party","billetterie","viewing party","parc des princes","arsenal"], "negative": []},
-            {"name": "Goal.com PSG", "url": "https://www.goal.com/fr/psg", "keywords": ["watch party","billetterie","places disponibles","viewing party"], "negative": []},
+            {
+              "name": "Billetterie PSG principale",
+              "url": "https://billetterie.psg.fr/fr/",
+              "keywords": ["watch party","viewing party","retransmission","ecran geant","écran géant","30 mai parc","diffusion finale","vivre la finale","places finale parc","finale parc des princes"],
+              "negative": ["alerte billetterie"],
+            },
+            {
+              "name": "Billetterie PSG listing",
+              "url": "https://billetterie.psg.fr/fr/listing-events",
+              "keywords": ["watch party","viewing party","retransmission","30 mai","ecran geant","diffusion finale","finale parc"],
+              "negative": [],
+            },
+            {
+              "name": "PSG.fr Watch Party officielle",
+              "url": "https://www.psg.fr/content/vivez-la-finale-de-champions-league-au-parc-des-princes-psg-arsenal-ucl-parc-des-princes-viewing-party-2025-2026",
+              "keywords": ["acheter","réserver","places disponibles","billetterie ouverte","get tickets","commander","achetez"],
+              "negative": [],
+            },
+            {
+              "name": "PSG.fr billetterie générale",
+              "url": "https://www.psg.fr/billetterie",
+              "keywords": ["watch party","viewing party","retransmission","écran géant","30 mai","diffusion finale","finale parc des princes"],
+              "negative": [],
+            },
+            {
+              "name": "Qlic alerte officielle PSG",
+              "url": "https://qlic.it/1796571",
+              "keywords": ["acheter","disponible","buy","available","sold out","commander","réserver","book"],
+              "negative": [],
+            },
+            {
+              "name": "CulturePSG billetterie",
+              "url": "https://www.culturepsg.com/bg/news/Places",
+              "keywords": ["billetterie ouverte watch party","places watch party disponibles","achetez vos places watch party","billetterie watch party","billetterie viewing party","billetterie retransmission finale"],
+              "negative": [],
+            },
+            {
+              "name": "Le Parisien PSG",
+              "url": "https://www.leparisien.fr/sports/football/psg/",
+              "keywords": ["billetterie ouverte watch party","places watch party disponibles","achetez watch party","billetterie retransmission finale parc","places retransmission disponibles"],
+              "negative": [],
+            },
+            {
+              "name": "RMC Sport LDC",
+              "url": "https://rmcsport.bfmtv.com/football/ligue-des-champions/",
+              "keywords": ["billetterie ouverte watch party","places watch party disponibles","achetez watch party","billetterie retransmission finale parc"],
+              "negative": [],
+            },
           ]
 
           alerts = []
