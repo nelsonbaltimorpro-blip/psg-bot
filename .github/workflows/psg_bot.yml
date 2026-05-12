@@ -9,50 +9,70 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Check billetterie
+      - name: Check billetterie PSG Watch Party
         run: |
           pip install requests beautifulsoup4 -q
           python - <<'EOF'
-          import requests, smtplib, sys
+          import requests, smtplib, os
           from bs4 import BeautifulSoup
           from email.mime.text import MIMEText
           from email.mime.multipart import MIMEMultipart
-          import os
 
           GMAIL = "nelson.baltimor.pro@gmail.com"
           PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
 
+          HEADERS = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+            "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+          }
+
           TARGETS = [
-            {"name": "Billetterie PSG", "url": "https://billetterie.psg.fr/fr/", "keywords": ["watch party","arsenal","30 mai","viewing party"], "negative": ["alerte billetterie"]},
-            {"name": "PSG.fr Watch Party", "url": "https://www.psg.fr/content/vivez-la-finale-de-champions-league-au-parc-des-princes-psg-arsenal-ucl-parc-des-princes-viewing-party-2025-2026", "keywords": ["acheter","réserver","places disponibles","buy","get tickets"], "negative": []},
-            {"name": "Qlic Alerte", "url": "https://qlic.it/1796571", "keywords": ["acheter","disponible","buy","available","sold out"], "negative": []},
+            {"name": "Billetterie PSG principale", "url": "https://billetterie.psg.fr/fr/", "keywords": ["watch party","arsenal","30 mai","viewing party","finale","retransmission"], "negative": ["alerte billetterie"]},
+            {"name": "Billetterie PSG listing", "url": "https://billetterie.psg.fr/fr/listing-events", "keywords": ["watch party","arsenal","finale","viewing","30 mai"], "negative": []},
+            {"name": "PSG.fr Watch Party", "url": "https://www.psg.fr/content/vivez-la-finale-de-champions-league-au-parc-des-princes-psg-arsenal-ucl-parc-des-princes-viewing-party-2025-2026", "keywords": ["acheter","réserver","places disponibles","buy","get tickets","book"], "negative": []},
+            {"name": "Qlic alerte officielle", "url": "https://qlic.it/1796571", "keywords": ["acheter","disponible","buy","available","sold out","commander"], "negative": []},
+            {"name": "PSG.fr billetterie", "url": "https://www.psg.fr/billetterie", "keywords": ["watch party","arsenal","finale","viewing","30 mai"], "negative": []},
+            {"name": "CulturePSG", "url": "https://www.culturepsg.com/bg/news/Places", "keywords": ["watch party","arsenal","viewing party","billetterie ouverte","places disponibles","30 mai"], "negative": []},
+            {"name": "Le Parisien PSG", "url": "https://www.leparisien.fr/sports/football/psg/", "keywords": ["watch party","billetterie ouverte","places disponibles","viewing party","arsenal"], "negative": []},
+            {"name": "RMC Sport", "url": "https://rmcsport.bfmtv.com/football/ligue-des-champions/", "keywords": ["watch party","billetterie","viewing party","parc des princes","arsenal"], "negative": []},
+            {"name": "Goal.com PSG", "url": "https://www.goal.com/fr/psg", "keywords": ["watch party","billetterie","places disponibles","viewing party"], "negative": []},
           ]
 
-          HEADERS = {"User-Agent": "Mozilla/5.0"}
-          found_any = False
+          alerts = []
 
           for t in TARGETS:
             try:
-              r = requests.get(t["url"], headers=HEADERS, timeout=15)
-              text = BeautifulSoup(r.text, "html.parser").get_text().lower()
-              hits = [k for k in t["keywords"] if k in text]
-              negs = [k for k in t["negative"] if k in text]
+              r = requests.get(t["url"], headers=HEADERS, timeout=20, allow_redirects=True)
+              text = BeautifulSoup(r.text, "html.parser").get_text(separator=" ").lower()
+              hits = [k for k in t["keywords"] if k.lower() in text]
+              negs = [k for k in t["negative"] if k.lower() in text]
               if hits and not negs:
-                found_any = True
-                msg = MIMEMultipart()
-                msg["From"] = GMAIL
-                msg["To"] = GMAIL
-                msg["Subject"] = "🚨 PSG WATCH PARTY — BILLETTERIE OUVERTE !"
-                body = f"Source: {t['name']}\nMots-clés: {hits}\n\nhttps://billetterie.psg.fr/fr/"
-                msg.attach(MIMEText(body, "plain"))
-                with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-                  s.login(GMAIL, PASSWORD)
-                  s.send_message(msg)
-                print(f"ALERTE envoyée — {t['name']}")
+                alerts.append({"name": t["name"], "url": t["url"], "hits": hits})
+                print(f"ALERTE — {t['name']} — {hits}")
+              else:
+                print(f"OK — {t['name']} — pas encore dispo")
             except Exception as e:
               print(f"Erreur {t['name']}: {e}")
 
-          if not found_any:
+          if alerts:
+            body = "FONCE MAINTENANT, les places partent vite !\n\n"
+            body += "LIEN DIRECT : https://billetterie.psg.fr/fr/\n"
+            body += "QLIC : https://qlic.it/1796571\n\n"
+            for a in alerts:
+              body += f"Source : {a['name']}\nMots-cles : {', '.join(a['hits'])}\nURL : {a['url']}\n\n"
+            msg = MIMEMultipart()
+            msg["From"] = GMAIL
+            msg["To"] = GMAIL
+            msg["Subject"] = "PSG WATCH PARTY — BILLETTERIE OUVERTE ! FONCE !"
+            msg.attach(MIMEText(body, "plain", "utf-8"))
+            try:
+              with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+                s.login(GMAIL, PASSWORD)
+                s.send_message(msg)
+              print("Email envoye !")
+            except Exception as e:
+              print(f"Erreur email : {e}")
+          else:
             print("Pas encore disponible.")
           EOF
         env:
