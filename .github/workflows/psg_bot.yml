@@ -8,16 +8,30 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: |
+          pip install playwright requests beautifulsoup4 -q
+          playwright install chromium --with-deps
+
       - name: Check billetterie PSG Watch Party
         run: |
-          pip install requests beautifulsoup4 -q
           python - <<'EOF'
-          import requests, smtplib, os
+          import smtplib, os, hashlib, json
+          import requests
           from bs4 import BeautifulSoup
+          from playwright.sync_api import sync_playwright
           from email.mime.text import MIMEText
           from email.mime.multipart import MIMEMultipart
 
@@ -29,43 +43,355 @@ jobs:
             "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
           }
 
-          TARGETS = [
-            {"name": "Billetterie PSG principale", "url": "https://billetterie.psg.fr/fr/", "keywords": ["watch party","viewing party","retransmission","ecran geant","écran géant","30 mai parc","diffusion finale","vivre la finale","places finale parc","finale parc des princes"], "negative": ["alerte billetterie"]},
-            {"name": "Billetterie PSG listing", "url": "https://billetterie.psg.fr/fr/listing-events", "keywords": ["watch party","viewing party","retransmission","30 mai","ecran geant","diffusion finale","finale parc"], "negative": []},
-            {"name": "PSG.fr Watch Party officielle", "url": "https://www.psg.fr/content/vivez-la-finale-de-champions-league-au-parc-des-princes-psg-arsenal-ucl-parc-des-princes-viewing-party-2025-2026", "keywords": ["acheter","réserver","places disponibles","billetterie ouverte","get tickets","commander","achetez"], "negative": []},
-            {"name": "PSG.fr billetterie générale", "url": "https://www.psg.fr/billetterie", "keywords": ["watch party","viewing party","retransmission","écran géant","30 mai","diffusion finale","finale parc des princes"], "negative": []},
-            {"name": "Qlic alerte officielle PSG", "url": "https://qlic.it/1796571", "keywords": ["acheter","disponible","buy","available","sold out","commander","réserver","book"], "negative": []},
-            {"name": "CulturePSG billetterie", "url": "https://www.culturepsg.com/bg/news/Places", "keywords": ["billetterie ouverte watch party","places watch party disponibles","achetez vos places watch party","billetterie retransmission finale"], "negative": []},
-            {"name": "Le Parisien PSG", "url": "https://www.leparisien.fr/sports/football/psg/", "keywords": ["billetterie ouverte watch party","places watch party disponibles","achetez watch party","billetterie retransmission finale parc"], "negative": []},
-            {"name": "RMC Sport LDC", "url": "https://rmcsport.bfmtv.com/football/ligue-des-champions/", "keywords": ["billetterie ouverte watch party","places watch party disponibles","achetez watch party","billetterie retransmission finale parc"], "negative": []},
+          # ============================================================
+          # SIGNAL D'ACHAT ACTIF
+          # ============================================================
+          SIGNAL_ACHAT = [
+            "acheter mes billets",
+            "ventes ouvertes pour",
+            "vente ouverte pour",
+            "la billetterie est ouverte",
+            "la vente est ouverte",
+            "les billets sont en vente",
+            "les places sont en vente",
+            "disponible a l'achat",
+            "disponible à l'achat",
+            "procurez-vous vos billets",
+            "procurez vous vos billets",
+            "reservez vos places",
+            "réservez vos places",
+            "commandez vos billets",
+            "places disponibles",
+            "stock disponible",
+            "places mises en vente",
+            "mise en vente",
+            "billetterie ouverte",
+            "vente ouverte",
           ]
+
+          # ============================================================
+          # PHASES
+          # ============================================================
+          SIGNAL_PHASES = [
+            "phase 1 ouverte","phase 2 ouverte","phase 3 ouverte",
+            "phase 1 est ouverte","phase 2 est ouverte","phase 3 est ouverte",
+            "ouverture de la phase 1","ouverture de la phase 2","ouverture de la phase 3",
+            "vente phase 1 ouverte","vente phase 2 ouverte","vente phase 3 ouverte",
+            "ouverture phase 1","ouverture phase 2","ouverture phase 3",
+            "ouverture myparis","ouverture my paris",
+            "ouverture myparis premium","ouverture my paris premium",
+            "myparis ouverte","my paris ouverte",
+            "myparis premium ouverte","my paris premium ouverte",
+          ]
+
+          # ============================================================
+          # CATEGORIES DE PUBLIC - toutes variantes MyParis incluses
+          # ============================================================
+          SIGNAL_CATEGORIES = [
+            # Grand public
+            "ventes ouvertes pour : grand public",
+            "vente ouverte pour : grand public",
+            "ventes ouvertes pour : abonnes grand public",
+            "ventes ouvertes pour : abonnés grand public",
+            "ventes ouvertes pour : tribune",
+            "ventes ouvertes pour : virage",
+            "ventes ouvertes pour : vague 1",
+            "ventes ouvertes pour : vague 2",
+            "ventes ouvertes pour : vague 3",
+            "ventes ouvertes pour : club premier",
+            "ventes ouvertes pour : le virage",
+            # MyParis toutes variantes
+            "ventes ouvertes pour : myparis",
+            "ventes ouvertes pour : myparis premium",
+            "ventes ouvertes pour : my paris",
+            "ventes ouvertes pour : my paris premium",
+            "vente ouverte pour : myparis",
+            "vente ouverte pour : myparis premium",
+            "vente ouverte pour : my paris",
+            "vente ouverte pour : my paris premium",
+            # Sociétés / CSE / Hospitalités
+            "ventes ouvertes pour : abonnes societes",
+            "ventes ouvertes pour : abonnés sociétés",
+            "ventes ouvertes pour : cse",
+            "ventes ouvertes pour : hospitalites",
+            "ventes ouvertes pour : hospitalités",
+            "vente ouverte pour : hospitalites",
+            "vente ouverte pour : hospitalités",
+            "vente ouverte pour : cse",
+          ]
+
+          # ============================================================
+          # TYPES DE BILLETS
+          # ============================================================
+          SIGNAL_TYPES_BILLETS = [
+            "billet a l'unite evenements",
+            "billet à l'unité evènements",
+            "billet a l'unite visibilite reduite",
+            "billet à l'unité visibilité réduite",
+            "billet a l'unite hospitalites",
+            "billet à l'unité hospitalités",
+            "visibilite reduite - evenement",
+            "visibilité réduite - evènement",
+            "hospitalites evènements",
+            "hospitalités evènements",
+          ]
+
+          # ============================================================
+          # PRIX (format exact PSG : "à partir de X,00 €")
+          # ============================================================
+          SIGNAL_PRIX = [
+            "à partir de 9,00","a partir de 9,00",
+            "à partir de 19,00","a partir de 19,00",
+            "à partir de 20,00","a partir de 20,00",
+            "à partir de 25,00","a partir de 25,00",
+            "à partir de 30,00","a partir de 30,00",
+            "à partir de 35,00","a partir de 35,00",
+            "à partir de 40,00","a partir de 40,00",
+            "à partir de 45,00","a partir de 45,00",
+            "à partir de 50,00","a partir de 50,00",
+          ]
+
+          # TOUS LES SIGNAUX BILLETTERIE REUNIS
+          KEYWORDS_BILLETTERIE = (
+            SIGNAL_ACHAT +
+            SIGNAL_PHASES +
+            SIGNAL_CATEGORIES +
+            SIGNAL_TYPES_BILLETS +
+            SIGNAL_PRIX
+          )
+
+          # PAGES RACINES
+          KEYWORDS_RACINE = [
+            "retransmission ucl final 2026",
+            "watch party ouverte",
+            "viewing party ouverte",
+          ]
+
+          # MEDIAS
+          KEYWORDS_MEDIAS = [
+            "billetterie watch party ouverte",
+            "billetterie de la retransmission ouverte",
+            "ouverture billetterie retransmission",
+            "phase 1 ouverte","phase 2 ouverte","phase 3 ouverte",
+            "phase 3 myparis premium ouverte",
+            "mise en vente watch party",
+            "watch party billetterie ouverte",
+            "places retransmission disponibles",
+            "ouverture de la phase",
+            "myparis ouverte","my paris ouverte",
+            "myparis premium ouverte","my paris premium ouverte",
+            "ouverture myparis","ouverture my paris",
+          ]
+
+          # ACTU PSG.fr inside-news
+          KEYWORDS_ACTU_PSG = [
+            "billetterie watch party",
+            "ouverture vente watch party",
+            "watch party billetterie ouverte",
+            "mise en vente watch party",
+            "phase 1 ouverte","phase 2 ouverte","phase 3 ouverte",
+            "ouverture de la phase",
+            "vente ouverte retransmission",
+            "myparis ouverte","my paris ouverte",
+            "myparis premium ouverte","my paris premium ouverte",
+            "ouverture myparis","ouverture my paris",
+          ]
+
+          # ============================================================
+          # SOURCES
+          # ============================================================
+
+          PLAYWRIGHT_TARGETS = [
+            {"name": "Billetterie PSG - Page offre retransmission",
+             "url": "https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026",
+             "keywords": KEYWORDS_BILLETTERIE,
+             "critical": True,
+             "watch_changes": True},  # DETECTION DE TOUT CHANGEMENT
+            {"name": "Billetterie PSG principale",
+             "url": "https://billetterie.psg.fr/fr/",
+             "keywords": KEYWORDS_RACINE + SIGNAL_ACHAT,
+             "critical": True,
+             "watch_changes": False},
+            {"name": "Billetterie PSG listing",
+             "url": "https://billetterie.psg.fr/fr/listing-events",
+             "keywords": KEYWORDS_RACINE + SIGNAL_ACHAT,
+             "critical": True,
+             "watch_changes": False},
+            {"name": "Qlic alerte officielle PSG",
+             "url": "https://qlic.it/1796571",
+             "keywords": SIGNAL_ACHAT + SIGNAL_PHASES + ["disponible maintenant"],
+             "critical": True,
+             "watch_changes": False},
+          ]
+
+          REQUESTS_TARGETS = [
+            {"name": "PSG.fr Watch Party officielle",
+             "url": "https://www.psg.fr/content/vivez-la-finale-de-champions-league-au-parc-des-princes-psg-arsenal-ucl-parc-des-princes-viewing-party-2025-2026",
+             "keywords": SIGNAL_PHASES + SIGNAL_ACHAT + [
+               "billetterie est ouverte","vente lancee","vente lancée",
+               "les billets sont disponibles","cliquez ici pour acheter",
+             ],
+             "critical": True,
+             "watch_changes": False},
+            {"name": "PSG.fr inside-news",
+             "url": "https://www.psg.fr/inside-news",
+             "keywords": KEYWORDS_ACTU_PSG,
+             "critical": False,
+             "watch_changes": False},
+            {"name": "PSG.fr billetterie",
+             "url": "https://www.psg.fr/billetterie",
+             "keywords": KEYWORDS_RACINE,
+             "critical": False,
+             "watch_changes": False},
+            {"name": "Canal Supporters PSG",
+             "url": "https://canal-supporters.com/category/psg-news/",
+             "keywords": KEYWORDS_MEDIAS,
+             "critical": False,
+             "watch_changes": False},
+            {"name": "CulturePSG",
+             "url": "https://www.culturepsg.com/bg/news/Places",
+             "keywords": KEYWORDS_MEDIAS,
+             "critical": False,
+             "watch_changes": False},
+            {"name": "Le Parisien PSG",
+             "url": "https://www.leparisien.fr/sports/football/psg/",
+             "keywords": KEYWORDS_MEDIAS,
+             "critical": False,
+             "watch_changes": False},
+            {"name": "RMC Sport LDC",
+             "url": "https://rmcsport.bfmtv.com/football/ligue-des-champions/",
+             "keywords": KEYWORDS_MEDIAS,
+             "critical": False,
+             "watch_changes": False},
+          ]
+
+          os.makedirs("keywords_state", exist_ok=True)
+          os.makedirs("page_hashes", exist_ok=True)
+
+          def check_target(text, t):
+            text_lower = text.lower()
+            alerts_out = []
+
+            # --- DETECTION MOT-CLES (toutes sources) ---
+            mots_actuels = sorted([k for k in t["keywords"] if k.lower() in text_lower])
+            state_filename = "keywords_state/" + hashlib.md5(t["url"].encode()).hexdigest() + ".json"
+            mots_precedents = []
+            if os.path.exists(state_filename):
+              try:
+                with open(state_filename, "r") as f:
+                  mots_precedents = json.load(f)
+              except:
+                mots_precedents = []
+            nouveaux_mots = [m for m in mots_actuels if m not in mots_precedents]
+            with open(state_filename, "w") as f:
+              json.dump(mots_actuels, f)
+            if nouveaux_mots:
+              alerts_out.append({
+                "type": "MOT-CLE",
+                "nouveaux": nouveaux_mots,
+                "tous": mots_actuels,
+              })
+
+            # --- DETECTION CHANGEMENT GLOBAL (page retransmission uniquement) ---
+            if t.get("watch_changes"):
+              hash_actuel = hashlib.md5(text_lower.encode()).hexdigest()
+              hash_filename = "page_hashes/" + hashlib.md5(t["url"].encode()).hexdigest() + ".txt"
+              hash_precedent = ""
+              if os.path.exists(hash_filename):
+                with open(hash_filename, "r") as f:
+                  hash_precedent = f.read().strip()
+              with open(hash_filename, "w") as f:
+                f.write(hash_actuel)
+              if hash_precedent and hash_actuel != hash_precedent:
+                # Signaler le changement seulement si pas deja signale par mot-cle
+                if not nouveaux_mots:
+                  alerts_out.append({
+                    "type": "CHANGEMENT DE PAGE",
+                    "nouveaux": ["La page a été modifiée (nouveau contenu détecté)"],
+                    "tous": [],
+                  })
+
+            return alerts_out
 
           alerts = []
 
-          for t in TARGETS:
+          # PLAYWRIGHT
+          print("=== PLAYWRIGHT (JS) ===")
+          try:
+            with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+                locale="fr-FR"
+              )
+              for t in PLAYWRIGHT_TARGETS:
+                try:
+                  page = context.new_page()
+                  page.goto(t["url"], timeout=30000, wait_until="networkidle")
+                  text = page.inner_text("body")
+                  page.close()
+                  results = check_target(text, t)
+                  for r in results:
+                    alerts.append({
+                      "name": t["name"],
+                      "url": t["url"],
+                      "type": r["type"],
+                      "nouveaux": r["nouveaux"],
+                      "tous": r["tous"],
+                      "critical": t.get("critical", False),
+                    })
+                    print(f"ALERTE {r['type']} — {t['name']} — {r['nouveaux']}")
+                  if not results:
+                    print(f"OK — {t['name']} — aucun changement")
+                except Exception as e:
+                  print(f"Erreur Playwright {t['name']}: {e}")
+              browser.close()
+          except Exception as e:
+            print(f"Erreur Playwright global: {e}")
+
+          # REQUESTS
+          print("=== REQUESTS (HTML) ===")
+          for t in REQUESTS_TARGETS:
             try:
               r = requests.get(t["url"], headers=HEADERS, timeout=20, allow_redirects=True)
-              text = BeautifulSoup(r.text, "html.parser").get_text(separator=" ").lower()
-              hits = [k for k in t["keywords"] if k.lower() in text]
-              negs = [k for k in t["negative"] if k.lower() in text]
-              if hits and not negs:
-                alerts.append({"name": t["name"], "url": t["url"], "hits": hits})
-                print(f"ALERTE — {t['name']} — {hits}")
-              else:
-                print(f"OK — {t['name']} — pas encore dispo")
+              text = BeautifulSoup(r.text, "html.parser").get_text(separator=" ")
+              results = check_target(text, t)
+              for res in results:
+                alerts.append({
+                  "name": t["name"],
+                  "url": t["url"],
+                  "type": res["type"],
+                  "nouveaux": res["nouveaux"],
+                  "tous": res["tous"],
+                  "critical": t.get("critical", False),
+                })
+                print(f"ALERTE {res['type']} — {t['name']} — {res['nouveaux']}")
+              if not results:
+                print(f"OK — {t['name']} — aucun changement")
             except Exception as e:
               print(f"Erreur {t['name']}: {e}")
 
+          # EMAIL
           if alerts:
-            body = "FONCE MAINTENANT, les places partent vite !\n\n"
-            body += "LIEN DIRECT : https://billetterie.psg.fr/fr/\n"
+            alerts.sort(key=lambda x: not x.get("critical", False))
+            body = "BILLETTERIE PSG - NOUVEAU SIGNAL !\n\n"
+            body += "LIEN DIRECT : https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026\n"
+            body += "BILLETTERIE : https://billetterie.psg.fr/fr/\n"
             body += "QLIC : https://qlic.it/1796571\n\n"
             for a in alerts:
-              body += f"Source : {a['name']}\nMots-cles : {', '.join(a['hits'])}\nURL : {a['url']}\n\n"
+              prio = "[CRITIQUE] " if a.get("critical") else ""
+              body += f"{prio}Source : {a['name']}\n"
+              body += f"Type : {a['type']}\n"
+              body += f"Signal : {', '.join(a['nouveaux'])}\n"
+              if a["tous"]:
+                body += f"Tous signaux actifs : {', '.join(a['tous'])}\n"
+              body += f"URL : {a['url']}\n\n"
+            has_critical = any(a.get("critical") for a in alerts)
+            subject = "PSG WATCH PARTY — BILLETTERIE OUVERTE ! FONCE !" if has_critical else "PSG WATCH PARTY — Signal detecte"
             msg = MIMEMultipart()
             msg["From"] = GMAIL
             msg["To"] = GMAIL
-            msg["Subject"] = "PSG WATCH PARTY — BILLETTERIE OUVERTE ! FONCE !"
+            msg["Subject"] = subject
             msg.attach(MIMEText(body, "plain", "utf-8"))
             try:
               with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
@@ -75,7 +401,15 @@ jobs:
             except Exception as e:
               print(f"Erreur email : {e}")
           else:
-            print("Pas encore disponible.")
+            print("Aucun nouveau signal.")
           EOF
         env:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+
+      - name: Commit state
+        run: |
+          git config user.name "psg-bot"
+          git config user.email "bot@noreply.github.com"
+          git add keywords_state/ page_hashes/
+          git diff --staged --quiet || git commit -m "Update state [skip ci]"
+          git push || echo "Rien a pousser ou conflit, on continue"
