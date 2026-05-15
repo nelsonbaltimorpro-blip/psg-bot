@@ -22,8 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install playwright requests beautifulsoup4 -q
-          playwright install chromium --with-deps
+          pip install requests beautifulsoup4 -q
 
       - name: Check billetterie PSG Watch Party
         run: |
@@ -31,7 +30,6 @@ jobs:
           import smtplib, os, hashlib, json
           import requests
           from bs4 import BeautifulSoup
-          from playwright.sync_api import sync_playwright
           from email.mime.text import MIMEText
           from email.mime.multipart import MIMEMultipart
 
@@ -45,6 +43,10 @@ jobs:
             "Accept-Encoding": "gzip, deflate, br",
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
           }
 
           SIGNAL_ACHAT = [
@@ -176,7 +178,9 @@ jobs:
             "ouverture myparis","ouverture my paris",
           ]
 
-          PLAYWRIGHT_TARGETS = [
+          # TOUTES LES SOURCES EN REQUESTS
+          TARGETS = [
+            # Billetterie PSG (requests, comme l'ancien bot qui marchait)
             {"name": "Billetterie PSG - Page offre retransmission",
              "url": "https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026",
              "keywords": KEYWORDS_BILLETTERIE,
@@ -197,9 +201,7 @@ jobs:
              "keywords": SIGNAL_ACHAT + SIGNAL_PHASES + ["disponible maintenant"],
              "critical": True,
              "watch_changes": False},
-          ]
-
-          REQUESTS_TARGETS = [
+            # PSG.fr
             {"name": "PSG.fr Watch Party officielle",
              "url": "https://www.psg.fr/content/vivez-la-finale-de-champions-league-au-parc-des-princes-psg-arsenal-ucl-parc-des-princes-viewing-party-2025-2026",
              "keywords": SIGNAL_PHASES + SIGNAL_ACHAT + [
@@ -218,6 +220,7 @@ jobs:
              "keywords": KEYWORDS_RACINE,
              "critical": False,
              "watch_changes": False},
+            # Medias
             {"name": "Canal Supporters PSG",
              "url": "https://canal-supporters.com/category/psg-news/",
              "keywords": KEYWORDS_MEDIAS,
@@ -246,6 +249,7 @@ jobs:
           def check_target(text, t):
             text_lower = text.lower()
             alerts_out = []
+
             mots_actuels = sorted([k for k in t["keywords"] if k.lower() in text_lower])
             state_filename = "keywords_state/" + hashlib.md5(t["url"].encode()).hexdigest() + ".json"
             mots_precedents = []
@@ -264,6 +268,7 @@ jobs:
                 "nouveaux": nouveaux_mots,
                 "tous": mots_actuels,
               })
+
             if t.get("watch_changes"):
               hash_actuel = hashlib.md5(text_lower.encode()).hexdigest()
               hash_filename = "page_hashes/" + hashlib.md5(t["url"].encode()).hexdigest() + ".txt"
@@ -279,146 +284,16 @@ jobs:
                   "nouveaux": ["La page a ete modifiee - nouveau contenu detecte"],
                   "tous": [],
                 })
+
             return alerts_out
-
-          def accept_cookies_and_get_text(page, url):
-            """Charge la page, accepte les cookies, retourne le texte."""
-            try:
-              page.goto(url, timeout=60000, wait_until="domcontentloaded")
-              page.wait_for_timeout(2000)
-
-              # Tentatives de clic sur bouton cookie (plusieurs selecteurs possibles)
-              cookie_selectors = [
-                "button:has-text('Accepter')",
-                "button:has-text('accepter')",
-                "button:has-text('Tout accepter')",
-                "button:has-text('Accept')",
-                "button:has-text('Accept all')",
-                "button:has-text('Continuer sans accepter')",
-                "#didomi-notice-agree-button",
-                "#onetrust-accept-btn-handler",
-                ".cookie-accept",
-                "[data-testid='cookie-accept']",
-                "button[class*='accept']",
-                "button[id*='accept']",
-                "button[id*='agree']",
-                "button[class*='agree']",
-              ]
-
-              cookie_clicked = False
-              for selector in cookie_selectors:
-                try:
-                  btn = page.locator(selector).first
-                  if btn.is_visible(timeout=1000):
-                    btn.click()
-                    print(f"Cookie accepte via : {selector}")
-                    cookie_clicked = True
-                    page.wait_for_timeout(2000)
-                    break
-                except:
-                  continue
-
-              if not cookie_clicked:
-                print("Aucun bouton cookie trouve, on continue")
-
-              # Attendre que le vrai contenu se charge
-              page.wait_for_timeout(3000)
-
-              text = page.inner_text("body")
-              return text
-
-            except Exception as e:
-              print(f"Erreur accept_cookies_and_get_text: {e}")
-              return None
-
-          def fetch_with_requests(url):
-            try:
-              r = requests.get(url, headers=HEADERS, timeout=20, allow_redirects=True)
-              return BeautifulSoup(r.text, "html.parser").get_text(separator=" ")
-            except:
-              return None
 
           alerts = []
 
-          # PLAYWRIGHT
-          print("=== PLAYWRIGHT (JS) ===")
-          try:
-            with sync_playwright() as p:
-              browser = p.chromium.launch(
-                headless=True,
-                args=[
-                  "--no-sandbox",
-                  "--disable-blink-features=AutomationControlled",
-                  "--disable-infobars",
-                  "--disable-dev-shm-usage",
-                  "--disable-gpu",
-                ]
-              )
-              context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                locale="fr-FR",
-                viewport={"width": 1280, "height": 720},
-                extra_http_headers={
-                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                  "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
-                  "Accept-Encoding": "gzip, deflate, br",
-                  "Connection": "keep-alive",
-                  "Upgrade-Insecure-Requests": "1",
-                  "Sec-Fetch-Dest": "document",
-                  "Sec-Fetch-Mode": "navigate",
-                  "Sec-Fetch-Site": "none",
-                  "Sec-Fetch-User": "?1",
-                }
-              )
-
-              for t in PLAYWRIGHT_TARGETS:
-                text = None
-                page = context.new_page()
-                try:
-                  page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-                  text = accept_cookies_and_get_text(page, t["url"])
-                  if text:
-                    print(f"Playwright OK — {t['name']} — {len(text)} caracteres")
-                  else:
-                    raise Exception("Texte vide apres cookie")
-                except Exception as e:
-                  print(f"Playwright echec — {t['name']} — fallback requests")
-                  text = fetch_with_requests(t["url"])
-                  if text:
-                    print(f"Fallback OK — {t['name']} — {len(text)} caracteres")
-                  else:
-                    print(f"Echec total — {t['name']}")
-                finally:
-                  try:
-                    page.close()
-                  except:
-                    pass
-
-                if text:
-                  results = check_target(text, t)
-                  for r in results:
-                    alerts.append({
-                      "name": t["name"],
-                      "url": t["url"],
-                      "type": r["type"],
-                      "nouveaux": r["nouveaux"],
-                      "tous": r["tous"],
-                      "critical": t.get("critical", False),
-                    })
-                    print(f"ALERTE {r['type']} — {t['name']} — {r['nouveaux']}")
-                  if not results:
-                    print(f"OK — {t['name']} — aucun nouveau signal")
-
-              browser.close()
-          except Exception as e:
-            print(f"Erreur Playwright global: {e}")
-
-          # REQUESTS
-          print("=== REQUESTS (HTML) ===")
-          for t in REQUESTS_TARGETS:
+          for t in TARGETS:
             try:
               r = requests.get(t["url"], headers=HEADERS, timeout=20, allow_redirects=True)
               text = BeautifulSoup(r.text, "html.parser").get_text(separator=" ")
+              print(f"Scan — {t['name']} — {len(text)} caracteres")
               results = check_target(text, t)
               for res in results:
                 alerts.append({
@@ -435,7 +310,6 @@ jobs:
             except Exception as e:
               print(f"Erreur {t['name']}: {e}")
 
-          # EMAIL
           if alerts:
             alerts.sort(key=lambda x: not x.get("critical", False))
             body = "BILLETTERIE PSG - NOUVEAU SIGNAL !\n\n"
@@ -468,7 +342,7 @@ jobs:
             print("Aucun nouveau signal.")
           EOF
         env:
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD
 
       - name: Commit state
         run: |
