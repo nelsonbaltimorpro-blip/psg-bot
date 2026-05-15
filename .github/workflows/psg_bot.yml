@@ -39,13 +39,18 @@ jobs:
           PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
 
           HEADERS = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
           }
 
           # ============================================================
-          # SIGNAL D'ACHAT ACTIF
+          # MOTS-CLES
           # ============================================================
+
           SIGNAL_ACHAT = [
             "acheter mes billets",
             "ventes ouvertes pour",
@@ -69,9 +74,6 @@ jobs:
             "vente ouverte",
           ]
 
-          # ============================================================
-          # PHASES
-          # ============================================================
           SIGNAL_PHASES = [
             "phase 1 ouverte","phase 2 ouverte","phase 3 ouverte",
             "phase 1 est ouverte","phase 2 est ouverte","phase 3 est ouverte",
@@ -84,11 +86,7 @@ jobs:
             "myparis premium ouverte","my paris premium ouverte",
           ]
 
-          # ============================================================
-          # CATEGORIES DE PUBLIC - toutes variantes MyParis incluses
-          # ============================================================
           SIGNAL_CATEGORIES = [
-            # Grand public
             "ventes ouvertes pour : grand public",
             "vente ouverte pour : grand public",
             "ventes ouvertes pour : abonnes grand public",
@@ -100,7 +98,6 @@ jobs:
             "ventes ouvertes pour : vague 3",
             "ventes ouvertes pour : club premier",
             "ventes ouvertes pour : le virage",
-            # MyParis toutes variantes
             "ventes ouvertes pour : myparis",
             "ventes ouvertes pour : myparis premium",
             "ventes ouvertes pour : my paris",
@@ -109,7 +106,6 @@ jobs:
             "vente ouverte pour : myparis premium",
             "vente ouverte pour : my paris",
             "vente ouverte pour : my paris premium",
-            # Sociétés / CSE / Hospitalités
             "ventes ouvertes pour : abonnes societes",
             "ventes ouvertes pour : abonnés sociétés",
             "ventes ouvertes pour : cse",
@@ -120,9 +116,6 @@ jobs:
             "vente ouverte pour : cse",
           ]
 
-          # ============================================================
-          # TYPES DE BILLETS
-          # ============================================================
           SIGNAL_TYPES_BILLETS = [
             "billet a l'unite evenements",
             "billet à l'unité evènements",
@@ -136,9 +129,6 @@ jobs:
             "hospitalités evènements",
           ]
 
-          # ============================================================
-          # PRIX (format exact PSG : "à partir de X,00 €")
-          # ============================================================
           SIGNAL_PRIX = [
             "à partir de 9,00","a partir de 9,00",
             "à partir de 19,00","a partir de 19,00",
@@ -151,23 +141,17 @@ jobs:
             "à partir de 50,00","a partir de 50,00",
           ]
 
-          # TOUS LES SIGNAUX BILLETTERIE REUNIS
           KEYWORDS_BILLETTERIE = (
-            SIGNAL_ACHAT +
-            SIGNAL_PHASES +
-            SIGNAL_CATEGORIES +
-            SIGNAL_TYPES_BILLETS +
-            SIGNAL_PRIX
+            SIGNAL_ACHAT + SIGNAL_PHASES +
+            SIGNAL_CATEGORIES + SIGNAL_TYPES_BILLETS + SIGNAL_PRIX
           )
 
-          # PAGES RACINES
           KEYWORDS_RACINE = [
             "retransmission ucl final 2026",
             "watch party ouverte",
             "viewing party ouverte",
           ]
 
-          # MEDIAS
           KEYWORDS_MEDIAS = [
             "billetterie watch party ouverte",
             "billetterie de la retransmission ouverte",
@@ -183,7 +167,6 @@ jobs:
             "ouverture myparis","ouverture my paris",
           ]
 
-          # ACTU PSG.fr inside-news
           KEYWORDS_ACTU_PSG = [
             "billetterie watch party",
             "ouverture vente watch party",
@@ -206,7 +189,7 @@ jobs:
              "url": "https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026",
              "keywords": KEYWORDS_BILLETTERIE,
              "critical": True,
-             "watch_changes": True},  # DETECTION DE TOUT CHANGEMENT
+             "watch_changes": True},
             {"name": "Billetterie PSG principale",
              "url": "https://billetterie.psg.fr/fr/",
              "keywords": KEYWORDS_RACINE + SIGNAL_ACHAT,
@@ -272,7 +255,6 @@ jobs:
             text_lower = text.lower()
             alerts_out = []
 
-            # --- DETECTION MOT-CLES (toutes sources) ---
             mots_actuels = sorted([k for k in t["keywords"] if k.lower() in text_lower])
             state_filename = "keywords_state/" + hashlib.md5(t["url"].encode()).hexdigest() + ".json"
             mots_precedents = []
@@ -292,7 +274,6 @@ jobs:
                 "tous": mots_actuels,
               })
 
-            # --- DETECTION CHANGEMENT GLOBAL (page retransmission uniquement) ---
             if t.get("watch_changes"):
               hash_actuel = hashlib.md5(text_lower.encode()).hexdigest()
               hash_filename = "page_hashes/" + hashlib.md5(t["url"].encode()).hexdigest() + ".txt"
@@ -302,34 +283,81 @@ jobs:
                   hash_precedent = f.read().strip()
               with open(hash_filename, "w") as f:
                 f.write(hash_actuel)
-              if hash_precedent and hash_actuel != hash_precedent:
-                # Signaler le changement seulement si pas deja signale par mot-cle
-                if not nouveaux_mots:
-                  alerts_out.append({
-                    "type": "CHANGEMENT DE PAGE",
-                    "nouveaux": ["La page a été modifiée (nouveau contenu détecté)"],
-                    "tous": [],
-                  })
+              if hash_precedent and hash_actuel != hash_precedent and not nouveaux_mots:
+                alerts_out.append({
+                  "type": "CHANGEMENT DE PAGE",
+                  "nouveaux": ["La page a ete modifiee - nouveau contenu detecte"],
+                  "tous": [],
+                })
 
             return alerts_out
 
+          def fetch_with_requests(url):
+            try:
+              r = requests.get(url, headers=HEADERS, timeout=20, allow_redirects=True)
+              return BeautifulSoup(r.text, "html.parser").get_text(separator=" ")
+            except:
+              return None
+
           alerts = []
 
-          # PLAYWRIGHT
+          # PLAYWRIGHT avec anti-detection
           print("=== PLAYWRIGHT (JS) ===")
           try:
             with sync_playwright() as p:
-              browser = p.chromium.launch(headless=True)
+              browser = p.chromium.launch(
+                headless=True,
+                args=[
+                  "--no-sandbox",
+                  "--disable-blink-features=AutomationControlled",
+                  "--disable-infobars",
+                  "--disable-dev-shm-usage",
+                  "--disable-gpu",
+                ]
+              )
               context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
-                locale="fr-FR"
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                locale="fr-FR",
+                viewport={"width": 1280, "height": 720},
+                extra_http_headers={
+                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                  "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+                  "Accept-Encoding": "gzip, deflate, br",
+                  "Connection": "keep-alive",
+                  "Upgrade-Insecure-Requests": "1",
+                  "Sec-Fetch-Dest": "document",
+                  "Sec-Fetch-Mode": "navigate",
+                  "Sec-Fetch-Site": "none",
+                  "Sec-Fetch-User": "?1",
+                }
               )
               for t in PLAYWRIGHT_TARGETS:
+                text = None
                 try:
                   page = context.new_page()
-                  page.goto(t["url"], timeout=30000, wait_until="networkidle")
+                  # Masquer webdriver
+                  page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                  page.goto(t["url"], timeout=60000, wait_until="domcontentloaded")
+                  # Attendre 3 secondes que le JS se charge
+                  page.wait_for_timeout(3000)
                   text = page.inner_text("body")
                   page.close()
+                  print(f"Playwright OK — {t['name']} — {len(text)} caracteres")
+                except Exception as e:
+                  print(f"Playwright timeout — {t['name']} — fallback requests")
+                  if page:
+                    try:
+                      page.close()
+                    except:
+                      pass
+                  # FALLBACK : si Playwright echoue, on essaie requests
+                  text = fetch_with_requests(t["url"])
+                  if text:
+                    print(f"Fallback requests OK — {t['name']} — {len(text)} caracteres")
+                  else:
+                    print(f"Echec total — {t['name']}")
+
+                if text:
                   results = check_target(text, t)
                   for r in results:
                     alerts.append({
@@ -342,9 +370,8 @@ jobs:
                     })
                     print(f"ALERTE {r['type']} — {t['name']} — {r['nouveaux']}")
                   if not results:
-                    print(f"OK — {t['name']} — aucun changement")
-                except Exception as e:
-                  print(f"Erreur Playwright {t['name']}: {e}")
+                    print(f"OK — {t['name']} — aucun nouveau signal")
+
               browser.close()
           except Exception as e:
             print(f"Erreur Playwright global: {e}")
@@ -367,7 +394,7 @@ jobs:
                 })
                 print(f"ALERTE {res['type']} — {t['name']} — {res['nouveaux']}")
               if not results:
-                print(f"OK — {t['name']} — aucun changement")
+                print(f"OK — {t['name']} — aucun nouveau signal")
             except Exception as e:
               print(f"Erreur {t['name']}: {e}")
 
