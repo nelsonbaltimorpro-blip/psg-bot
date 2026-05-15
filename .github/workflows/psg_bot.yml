@@ -178,9 +178,7 @@ jobs:
             "ouverture myparis","ouverture my paris",
           ]
 
-          # TOUTES LES SOURCES EN REQUESTS
           TARGETS = [
-            # Billetterie PSG (requests, comme l'ancien bot qui marchait)
             {"name": "Billetterie PSG - Page offre retransmission",
              "url": "https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026",
              "keywords": KEYWORDS_BILLETTERIE,
@@ -201,7 +199,6 @@ jobs:
              "keywords": SIGNAL_ACHAT + SIGNAL_PHASES + ["disponible maintenant"],
              "critical": True,
              "watch_changes": False},
-            # PSG.fr
             {"name": "PSG.fr Watch Party officielle",
              "url": "https://www.psg.fr/content/vivez-la-finale-de-champions-league-au-parc-des-princes-psg-arsenal-ucl-parc-des-princes-viewing-party-2025-2026",
              "keywords": SIGNAL_PHASES + SIGNAL_ACHAT + [
@@ -220,7 +217,6 @@ jobs:
              "keywords": KEYWORDS_RACINE,
              "critical": False,
              "watch_changes": False},
-            # Medias
             {"name": "Canal Supporters PSG",
              "url": "https://canal-supporters.com/category/psg-news/",
              "keywords": KEYWORDS_MEDIAS,
@@ -249,7 +245,6 @@ jobs:
           def check_target(text, t):
             text_lower = text.lower()
             alerts_out = []
-
             mots_actuels = sorted([k for k in t["keywords"] if k.lower() in text_lower])
             state_filename = "keywords_state/" + hashlib.md5(t["url"].encode()).hexdigest() + ".json"
             mots_precedents = []
@@ -268,7 +263,6 @@ jobs:
                 "nouveaux": nouveaux_mots,
                 "tous": mots_actuels,
               })
-
             if t.get("watch_changes"):
               hash_actuel = hashlib.md5(text_lower.encode()).hexdigest()
               hash_filename = "page_hashes/" + hashlib.md5(t["url"].encode()).hexdigest() + ".txt"
@@ -284,7 +278,6 @@ jobs:
                   "nouveaux": ["La page a ete modifiee - nouveau contenu detecte"],
                   "tous": [],
                 })
-
             return alerts_out
 
           alerts = []
@@ -342,7 +335,7 @@ jobs:
             print("Aucun nouveau signal.")
           EOF
         env:
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
 
       - name: Commit state
         run: |
