@@ -47,10 +47,6 @@ jobs:
             "Upgrade-Insecure-Requests": "1",
           }
 
-          # ============================================================
-          # MOTS-CLES
-          # ============================================================
-
           SIGNAL_ACHAT = [
             "acheter mes billets",
             "ventes ouvertes pour",
@@ -180,10 +176,6 @@ jobs:
             "ouverture myparis","ouverture my paris",
           ]
 
-          # ============================================================
-          # SOURCES
-          # ============================================================
-
           PLAYWRIGHT_TARGETS = [
             {"name": "Billetterie PSG - Page offre retransmission",
              "url": "https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026",
@@ -254,7 +246,6 @@ jobs:
           def check_target(text, t):
             text_lower = text.lower()
             alerts_out = []
-
             mots_actuels = sorted([k for k in t["keywords"] if k.lower() in text_lower])
             state_filename = "keywords_state/" + hashlib.md5(t["url"].encode()).hexdigest() + ".json"
             mots_precedents = []
@@ -273,7 +264,6 @@ jobs:
                 "nouveaux": nouveaux_mots,
                 "tous": mots_actuels,
               })
-
             if t.get("watch_changes"):
               hash_actuel = hashlib.md5(text_lower.encode()).hexdigest()
               hash_filename = "page_hashes/" + hashlib.md5(t["url"].encode()).hexdigest() + ".txt"
@@ -289,8 +279,57 @@ jobs:
                   "nouveaux": ["La page a ete modifiee - nouveau contenu detecte"],
                   "tous": [],
                 })
-
             return alerts_out
+
+          def accept_cookies_and_get_text(page, url):
+            """Charge la page, accepte les cookies, retourne le texte."""
+            try:
+              page.goto(url, timeout=60000, wait_until="domcontentloaded")
+              page.wait_for_timeout(2000)
+
+              # Tentatives de clic sur bouton cookie (plusieurs selecteurs possibles)
+              cookie_selectors = [
+                "button:has-text('Accepter')",
+                "button:has-text('accepter')",
+                "button:has-text('Tout accepter')",
+                "button:has-text('Accept')",
+                "button:has-text('Accept all')",
+                "button:has-text('Continuer sans accepter')",
+                "#didomi-notice-agree-button",
+                "#onetrust-accept-btn-handler",
+                ".cookie-accept",
+                "[data-testid='cookie-accept']",
+                "button[class*='accept']",
+                "button[id*='accept']",
+                "button[id*='agree']",
+                "button[class*='agree']",
+              ]
+
+              cookie_clicked = False
+              for selector in cookie_selectors:
+                try:
+                  btn = page.locator(selector).first
+                  if btn.is_visible(timeout=1000):
+                    btn.click()
+                    print(f"Cookie accepte via : {selector}")
+                    cookie_clicked = True
+                    page.wait_for_timeout(2000)
+                    break
+                except:
+                  continue
+
+              if not cookie_clicked:
+                print("Aucun bouton cookie trouve, on continue")
+
+              # Attendre que le vrai contenu se charge
+              page.wait_for_timeout(3000)
+
+              text = page.inner_text("body")
+              return text
+
+            except Exception as e:
+              print(f"Erreur accept_cookies_and_get_text: {e}")
+              return None
 
           def fetch_with_requests(url):
             try:
@@ -301,7 +340,7 @@ jobs:
 
           alerts = []
 
-          # PLAYWRIGHT avec anti-detection
+          # PLAYWRIGHT
           print("=== PLAYWRIGHT (JS) ===")
           try:
             with sync_playwright() as p:
@@ -331,31 +370,29 @@ jobs:
                   "Sec-Fetch-User": "?1",
                 }
               )
+
               for t in PLAYWRIGHT_TARGETS:
                 text = None
+                page = context.new_page()
                 try:
-                  page = context.new_page()
-                  # Masquer webdriver
                   page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-                  page.goto(t["url"], timeout=60000, wait_until="domcontentloaded")
-                  # Attendre 3 secondes que le JS se charge
-                  page.wait_for_timeout(3000)
-                  text = page.inner_text("body")
-                  page.close()
-                  print(f"Playwright OK — {t['name']} — {len(text)} caracteres")
+                  text = accept_cookies_and_get_text(page, t["url"])
+                  if text:
+                    print(f"Playwright OK — {t['name']} — {len(text)} caracteres")
+                  else:
+                    raise Exception("Texte vide apres cookie")
                 except Exception as e:
-                  print(f"Playwright timeout — {t['name']} — fallback requests")
-                  if page:
-                    try:
-                      page.close()
-                    except:
-                      pass
-                  # FALLBACK : si Playwright echoue, on essaie requests
+                  print(f"Playwright echec — {t['name']} — fallback requests")
                   text = fetch_with_requests(t["url"])
                   if text:
-                    print(f"Fallback requests OK — {t['name']} — {len(text)} caracteres")
+                    print(f"Fallback OK — {t['name']} — {len(text)} caracteres")
                   else:
                     print(f"Echec total — {t['name']}")
+                finally:
+                  try:
+                    page.close()
+                  except:
+                    pass
 
                 if text:
                   results = check_target(text, t)
