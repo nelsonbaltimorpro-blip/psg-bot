@@ -181,12 +181,11 @@ jobs:
           ]
 
           TARGETS = [
-            # Billetterie PSG via Cloudflare Worker
             {"name": "Billetterie PSG - Page offre retransmission",
              "url": WORKER + "https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026",
              "keywords": KEYWORDS_BILLETTERIE,
              "critical": True,
-             "watch_changes": True},
+             "watch_changes": False},
             {"name": "Billetterie PSG principale",
              "url": WORKER + "https://billetterie.psg.fr/fr/",
              "keywords": KEYWORDS_RACINE + SIGNAL_ACHAT,
@@ -197,13 +196,11 @@ jobs:
              "keywords": KEYWORDS_RACINE + SIGNAL_ACHAT,
              "critical": True,
              "watch_changes": False},
-            # Qlic
             {"name": "Qlic alerte officielle PSG",
              "url": "https://qlic.it/1796571",
              "keywords": SIGNAL_ACHAT + SIGNAL_PHASES + ["disponible maintenant"],
              "critical": True,
              "watch_changes": False},
-            # PSG.fr
             {"name": "PSG.fr Watch Party officielle",
              "url": "https://www.psg.fr/content/vivez-la-finale-de-champions-league-au-parc-des-princes-psg-arsenal-ucl-parc-des-princes-viewing-party-2025-2026",
              "keywords": SIGNAL_PHASES + SIGNAL_ACHAT + [
@@ -222,7 +219,6 @@ jobs:
              "keywords": KEYWORDS_RACINE,
              "critical": False,
              "watch_changes": False},
-            # Medias
             {"name": "Canal Supporters PSG",
              "url": "https://canal-supporters.com/category/psg-news/",
              "keywords": KEYWORDS_MEDIAS,
@@ -246,7 +242,6 @@ jobs:
           ]
 
           os.makedirs("keywords_state", exist_ok=True)
-          os.makedirs("page_hashes", exist_ok=True)
 
           def check_target(text, t):
             text_lower = text.lower()
@@ -269,21 +264,6 @@ jobs:
                 "nouveaux": nouveaux_mots,
                 "tous": mots_actuels,
               })
-            if t.get("watch_changes"):
-              hash_actuel = hashlib.md5(text_lower.encode()).hexdigest()
-              hash_filename = "page_hashes/" + hashlib.md5(t["url"].encode()).hexdigest() + ".txt"
-              hash_precedent = ""
-              if os.path.exists(hash_filename):
-                with open(hash_filename, "r") as f:
-                  hash_precedent = f.read().strip()
-              with open(hash_filename, "w") as f:
-                f.write(hash_actuel)
-              if hash_precedent and hash_actuel != hash_precedent and not nouveaux_mots:
-                alerts_out.append({
-                  "type": "CHANGEMENT DE PAGE",
-                  "nouveaux": ["La page a ete modifiee - nouveau contenu detecte"],
-                  "tous": [],
-                })
             return alerts_out
 
           alerts = []
@@ -347,6 +327,6 @@ jobs:
         run: |
           git config user.name "psg-bot"
           git config user.email "bot@noreply.github.com"
-          git add keywords_state/ page_hashes/
+          git add keywords_state/
           git diff --staged --quiet || git commit -m "Update state [skip ci]"
           git push || echo "Rien a pousser ou conflit, on continue"
