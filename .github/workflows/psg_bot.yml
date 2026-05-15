@@ -36,6 +36,8 @@ jobs:
           GMAIL = "nelson.baltimor.pro@gmail.com"
           PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
 
+          WORKER = "https://late-credit-b4e0.nelson-baltimor-pro.workers.dev/?url="
+
           HEADERS = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -179,26 +181,29 @@ jobs:
           ]
 
           TARGETS = [
+            # Billetterie PSG via Cloudflare Worker
             {"name": "Billetterie PSG - Page offre retransmission",
-             "url": "https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026",
+             "url": WORKER + "https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026",
              "keywords": KEYWORDS_BILLETTERIE,
              "critical": True,
              "watch_changes": True},
             {"name": "Billetterie PSG principale",
-             "url": "https://billetterie.psg.fr/fr/",
+             "url": WORKER + "https://billetterie.psg.fr/fr/",
              "keywords": KEYWORDS_RACINE + SIGNAL_ACHAT,
              "critical": True,
              "watch_changes": False},
             {"name": "Billetterie PSG listing",
-             "url": "https://billetterie.psg.fr/fr/listing-events",
+             "url": WORKER + "https://billetterie.psg.fr/fr/listing-events",
              "keywords": KEYWORDS_RACINE + SIGNAL_ACHAT,
              "critical": True,
              "watch_changes": False},
+            # Qlic
             {"name": "Qlic alerte officielle PSG",
              "url": "https://qlic.it/1796571",
              "keywords": SIGNAL_ACHAT + SIGNAL_PHASES + ["disponible maintenant"],
              "critical": True,
              "watch_changes": False},
+            # PSG.fr
             {"name": "PSG.fr Watch Party officielle",
              "url": "https://www.psg.fr/content/vivez-la-finale-de-champions-league-au-parc-des-princes-psg-arsenal-ucl-parc-des-princes-viewing-party-2025-2026",
              "keywords": SIGNAL_PHASES + SIGNAL_ACHAT + [
@@ -217,6 +222,7 @@ jobs:
              "keywords": KEYWORDS_RACINE,
              "critical": False,
              "watch_changes": False},
+            # Medias
             {"name": "Canal Supporters PSG",
              "url": "https://canal-supporters.com/category/psg-news/",
              "keywords": KEYWORDS_MEDIAS,
