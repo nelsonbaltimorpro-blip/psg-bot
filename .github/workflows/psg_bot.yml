@@ -27,7 +27,7 @@ jobs:
       - name: Check billetterie PSG Watch Party
         run: |
           python - <<'EOF'
-          import smtplib, os, hashlib, json
+          import smtplib, os, hashlib, json, re
           import requests
           from bs4 import BeautifulSoup
           from email.mime.text import MIMEText
@@ -35,7 +35,6 @@ jobs:
 
           GMAIL = "nelson.baltimor.pro@gmail.com"
           PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
-
           WORKER = "https://late-credit-b4e0.nelson-baltimor-pro.workers.dev/?url="
 
           HEADERS = {
@@ -87,17 +86,40 @@ jobs:
           ]
 
           SIGNAL_CATEGORIES = [
-            "ventes ouvertes pour : grand public",
-            "vente ouverte pour : grand public",
+            "abonnes diffusion - vague 1",
+            "abonnés diffusion - vague 1",
+            "abonnes - vague 1",
+            "abonnés - vague 1",
+            "ventes ouvertes pour : abonnes diffusion",
+            "ventes ouvertes pour : abonnés diffusion",
+            "hospitalites diffusion",
+            "hospitalités diffusion",
+            "societes diffusion",
+            "sociétés diffusion",
+            "- vague 2",
+            "abonnes diffusion - vague 2",
+            "abonnés diffusion - vague 2",
+            "abonnes - vague 2",
+            "abonnés - vague 2",
+            "abonnes historiques - vague 2",
+            "abonnés historiques - vague 2",
+            "ventes ouvertes pour : vague 2",
+            "vente ouverte pour : vague 2",
+            "ventes ouvertes pour : abonnes historiques",
+            "ventes ouvertes pour : abonnés historiques",
             "ventes ouvertes pour : abonnes grand public",
             "ventes ouvertes pour : abonnés grand public",
             "ventes ouvertes pour : tribune",
             "ventes ouvertes pour : virage",
-            "ventes ouvertes pour : vague 1",
-            "ventes ouvertes pour : vague 2",
-            "ventes ouvertes pour : vague 3",
             "ventes ouvertes pour : club premier",
             "ventes ouvertes pour : le virage",
+            "- vague 3",
+            "abonnes diffusion - vague 3",
+            "abonnés diffusion - vague 3",
+            "abonnes - vague 3",
+            "abonnés - vague 3",
+            "ventes ouvertes pour : vague 3",
+            "vente ouverte pour : vague 3",
             "ventes ouvertes pour : myparis",
             "ventes ouvertes pour : myparis premium",
             "ventes ouvertes pour : my paris",
@@ -106,6 +128,8 @@ jobs:
             "vente ouverte pour : myparis premium",
             "vente ouverte pour : my paris",
             "vente ouverte pour : my paris premium",
+            "ventes ouvertes pour : grand public",
+            "vente ouverte pour : grand public",
             "ventes ouvertes pour : abonnes societes",
             "ventes ouvertes pour : abonnés sociétés",
             "ventes ouvertes pour : cse",
@@ -114,19 +138,6 @@ jobs:
             "vente ouverte pour : hospitalites",
             "vente ouverte pour : hospitalités",
             "vente ouverte pour : cse",
-          ]
-
-          SIGNAL_TYPES_BILLETS = [
-            "billet a l'unite evenements",
-            "billet à l'unité evènements",
-            "billet a l'unite visibilite reduite",
-            "billet à l'unité visibilité réduite",
-            "billet a l'unite hospitalites",
-            "billet à l'unité hospitalités",
-            "visibilite reduite - evenement",
-            "visibilité réduite - evènement",
-            "hospitalites evènements",
-            "hospitalités evènements",
           ]
 
           SIGNAL_PRIX = [
@@ -141,23 +152,25 @@ jobs:
             "à partir de 50,00","a partir de 50,00",
           ]
 
-          KEYWORDS_BILLETTERIE = (
-            SIGNAL_ACHAT + SIGNAL_PHASES +
-            SIGNAL_CATEGORIES + SIGNAL_TYPES_BILLETS + SIGNAL_PRIX
-          )
-
-          KEYWORDS_RACINE = [
-            "retransmission ucl final 2026",
-            "watch party ouverte",
-            "viewing party ouverte",
+          SIGNAL_TICKETPLACE = [
+            "disponible sur ticketplace",
+            "disponible via ticketplace",
+            "revente officielle",
+            "places disponibles sur ticketplace",
+            "places sur ticketplace",
+            "billet disponible",
+            "billets disponibles",
           ]
+
+          KEYWORDS_BILLETTERIE = (
+            SIGNAL_ACHAT + SIGNAL_PHASES + SIGNAL_CATEGORIES + SIGNAL_PRIX
+          )
 
           KEYWORDS_MEDIAS = [
             "billetterie watch party ouverte",
             "billetterie de la retransmission ouverte",
             "ouverture billetterie retransmission",
             "phase 1 ouverte","phase 2 ouverte","phase 3 ouverte",
-            "phase 3 myparis premium ouverte",
             "mise en vente watch party",
             "watch party billetterie ouverte",
             "places retransmission disponibles",
@@ -165,105 +178,207 @@ jobs:
             "myparis ouverte","my paris ouverte",
             "myparis premium ouverte","my paris premium ouverte",
             "ouverture myparis","ouverture my paris",
+            "vague 2 ouverte","vague 3 ouverte",
+            "nouvelle vague billetterie",
           ]
 
-          KEYWORDS_ACTU_PSG = [
-            "billetterie watch party",
-            "ouverture vente watch party",
-            "watch party billetterie ouverte",
-            "mise en vente watch party",
-            "phase 1 ouverte","phase 2 ouverte","phase 3 ouverte",
-            "ouverture de la phase",
-            "vente ouverte retransmission",
-            "myparis ouverte","my paris ouverte",
-            "myparis premium ouverte","my paris premium ouverte",
-            "ouverture myparis","ouverture my paris",
+          ALWAYS_ALERT = [
+            "acheter mes billets",
+            "- vague 2",
+            "abonnes - vague 2",
+            "abonnés - vague 2",
+            "abonnes diffusion - vague 2",
+            "abonnés diffusion - vague 2",
+            "abonnes historiques - vague 2",
+            "abonnés historiques - vague 2",
+            "ventes ouvertes pour : vague 2",
+            "vente ouverte pour : vague 2",
+            "ventes ouvertes pour : abonnes historiques",
+            "ventes ouvertes pour : abonnés historiques",
+            "ventes ouvertes pour : abonnes grand public",
+            "ventes ouvertes pour : abonnés grand public",
+            "- vague 3",
+            "abonnes - vague 3",
+            "abonnés - vague 3",
+            "abonnes diffusion - vague 3",
+            "abonnés diffusion - vague 3",
+            "ventes ouvertes pour : vague 3",
+            "vente ouverte pour : vague 3",
+            "ventes ouvertes pour : myparis premium",
+            "ventes ouvertes pour : myparis",
+            "ventes ouvertes pour : my paris premium",
+            "ventes ouvertes pour : my paris",
+            "vente ouverte pour : myparis premium",
+            "vente ouverte pour : myparis",
+            "ventes ouvertes pour : grand public",
+            "vente ouverte pour : grand public",
+            "places disponibles sur ticketplace",
+            "billet disponible",
+            "billets disponibles",
           ]
 
           TARGETS = [
+            {"name": "Billetterie PSG - Catalogue achat diffusion UCL",
+             "url": WORKER + "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026",
+             "keywords": KEYWORDS_BILLETTERIE,
+             "critical": True,
+             "always_alert": True,
+             "watch_bloc": True},
             {"name": "Billetterie PSG - Page offre retransmission",
              "url": WORKER + "https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026",
              "keywords": KEYWORDS_BILLETTERIE,
              "critical": True,
-             "watch_changes": False},
+             "always_alert": True,
+             "watch_bloc": True},
             {"name": "Billetterie PSG principale",
              "url": WORKER + "https://billetterie.psg.fr/fr/",
-             "keywords": KEYWORDS_RACINE + SIGNAL_ACHAT,
-             "critical": True,
-             "watch_changes": False},
-            {"name": "Billetterie PSG listing",
-             "url": WORKER + "https://billetterie.psg.fr/fr/listing-events",
-             "keywords": KEYWORDS_RACINE + SIGNAL_ACHAT,
-             "critical": True,
-             "watch_changes": False},
-            {"name": "Qlic alerte officielle PSG",
-             "url": "https://qlic.it/1796571",
-             "keywords": SIGNAL_ACHAT + SIGNAL_PHASES + ["disponible maintenant"],
-             "critical": True,
-             "watch_changes": False},
-            {"name": "PSG.fr Watch Party officielle",
-             "url": "https://www.psg.fr/content/vivez-la-finale-de-champions-league-au-parc-des-princes-psg-arsenal-ucl-parc-des-princes-viewing-party-2025-2026",
-             "keywords": SIGNAL_PHASES + SIGNAL_ACHAT + [
-               "billetterie est ouverte","vente lancee","vente lancée",
-               "les billets sont disponibles","cliquez ici pour acheter",
+             "keywords": SIGNAL_ACHAT + SIGNAL_CATEGORIES + [
+               "retransmission ucl final 2026",
+               "diffusion-de-la-finale-ucl-2026",
+               "watch party","viewing party","diffusion finale",
              ],
              "critical": True,
-             "watch_changes": False},
-            {"name": "PSG.fr inside-news",
-             "url": "https://www.psg.fr/inside-news",
-             "keywords": KEYWORDS_ACTU_PSG,
-             "critical": False,
-             "watch_changes": False},
-            {"name": "PSG.fr billetterie",
-             "url": "https://www.psg.fr/billetterie",
-             "keywords": KEYWORDS_RACINE,
-             "critical": False,
-             "watch_changes": False},
+             "always_alert": True,
+             "watch_bloc": False},
+            {"name": "Billetterie PSG listing",
+             "url": WORKER + "https://billetterie.psg.fr/fr/listing-events",
+             "keywords": SIGNAL_ACHAT + SIGNAL_CATEGORIES + [
+               "retransmission ucl final 2026",
+               "diffusion-de-la-finale-ucl-2026",
+               "watch party","viewing party","diffusion finale",
+             ],
+             "critical": True,
+             "always_alert": False,
+             "watch_bloc": False},
+            {"name": "PSG.fr - Info billetterie diffusion finale",
+             "url": "https://www.psg.fr/content/information-billetterie-pour-la-diffusion-de-la-finale-de-ligue-des-champions-psg-arsenal-ucl-parc-des-princes-viewing-party-20252026",
+             "keywords": SIGNAL_PHASES + SIGNAL_ACHAT + SIGNAL_CATEGORIES + [
+               "vague 2","vague 3","myparis premium",
+               "billetterie est ouverte","vente lancee","vente lancée",
+               "les billets sont disponibles","cliquez ici pour acheter",
+               "nouvelle phase",
+             ],
+             "critical": True,
+             "always_alert": False,
+             "watch_bloc": False},
+            {"name": "TicketPlace PSG - Revente diffusion",
+             "url": WORKER + "https://ticketplace.psg.fr/fr/",
+             "keywords": SIGNAL_TICKETPLACE + [
+               "finale","diffusion","30 mai","parc des princes",
+               "billet disponible","billets disponibles","places disponibles",
+             ],
+             "critical": True,
+             "always_alert": True,
+             "watch_bloc": False},
+            {"name": "Qlic alerte officielle PSG",
+             "url": "https://qlic.it/1796571",
+             "keywords": SIGNAL_ACHAT + SIGNAL_PHASES + SIGNAL_CATEGORIES + [
+               "disponible maintenant","nouvelle phase","nouvelle vague",
+             ],
+             "critical": True,
+             "always_alert": False,
+             "watch_bloc": False},
             {"name": "Canal Supporters PSG",
              "url": "https://canal-supporters.com/category/psg-news/",
              "keywords": KEYWORDS_MEDIAS,
              "critical": False,
-             "watch_changes": False},
+             "always_alert": False,
+             "watch_bloc": False},
             {"name": "CulturePSG",
              "url": "https://www.culturepsg.com/bg/news/Places",
              "keywords": KEYWORDS_MEDIAS,
              "critical": False,
-             "watch_changes": False},
+             "always_alert": False,
+             "watch_bloc": False},
             {"name": "Le Parisien PSG",
              "url": "https://www.leparisien.fr/sports/football/psg/",
              "keywords": KEYWORDS_MEDIAS,
              "critical": False,
-             "watch_changes": False},
+             "always_alert": False,
+             "watch_bloc": False},
             {"name": "RMC Sport LDC",
              "url": "https://rmcsport.bfmtv.com/football/ligue-des-champions/",
              "keywords": KEYWORDS_MEDIAS,
              "critical": False,
-             "watch_changes": False},
+             "always_alert": False,
+             "watch_bloc": False},
           ]
 
           os.makedirs("keywords_state", exist_ok=True)
+
+          def extraire_bloc_ventes(text):
+            patterns = [
+              r"ventes? ouvertes? pour.{0,300}",
+              r"abonnés?.{0,50}vague.{0,100}",
+              r"abonnés? diffusion.{0,100}",
+              r"hospitalités?.{0,100}",
+            ]
+            blocs = []
+            for p in patterns:
+              m = re.search(p, text, re.IGNORECASE)
+              if m:
+                blocs.append(m.group(0).strip())
+            return " | ".join(blocs)
 
           def check_target(text, t):
             text_lower = text.lower()
             alerts_out = []
             mots_actuels = sorted([k for k in t["keywords"] if k.lower() in text_lower])
             state_filename = "keywords_state/" + hashlib.md5(t["url"].encode()).hexdigest() + ".json"
-            mots_precedents = []
+
+            state = {}
             if os.path.exists(state_filename):
               try:
                 with open(state_filename, "r") as f:
-                  mots_precedents = json.load(f)
+                  data = json.load(f)
+                  if isinstance(data, list):
+                    state = {"mots": data, "bloc_ventes": ""}
+                  else:
+                    state = data
               except:
-                mots_precedents = []
+                state = {}
+
+            mots_precedents = state.get("mots", [])
+            bloc_precedent = state.get("bloc_ventes", "")
+
+            bloc_actuel = ""
+            changement_bloc = False
+            if t.get("watch_bloc", False):
+              bloc_actuel = extraire_bloc_ventes(text_lower)
+              if bloc_actuel and bloc_precedent and bloc_actuel != bloc_precedent:
+                changement_bloc = True
+
             nouveaux_mots = [m for m in mots_actuels if m not in mots_precedents]
+
+            always_trouves = []
+            if t.get("always_alert", False):
+              always_trouves = [m for m in mots_actuels if m.lower() in [a.lower() for a in ALWAYS_ALERT]]
+
             with open(state_filename, "w") as f:
-              json.dump(mots_actuels, f)
+              json.dump({
+                "mots": mots_actuels,
+                "bloc_ventes": bloc_actuel if t.get("watch_bloc") else bloc_precedent
+              }, f)
+
+            if changement_bloc:
+              alerts_out.append({
+                "type": "CHANGEMENT BLOC VENTES — NOUVELLE VAGUE POSSIBLE !",
+                "nouveaux": ["Le contenu du bloc ventes a change sur la page"],
+                "tous": mots_actuels,
+              })
             if nouveaux_mots:
               alerts_out.append({
-                "type": "MOT-CLE",
+                "type": "NOUVEAU MOT-CLE",
                 "nouveaux": nouveaux_mots,
                 "tous": mots_actuels,
               })
+            elif not changement_bloc and always_trouves:
+              alerts_out.append({
+                "type": "VAGUE ACTIVE",
+                "nouveaux": always_trouves,
+                "tous": mots_actuels,
+              })
+
             return alerts_out
 
           alerts = []
@@ -291,20 +406,39 @@ jobs:
 
           if alerts:
             alerts.sort(key=lambda x: not x.get("critical", False))
+
             body = "BILLETTERIE PSG - NOUVEAU SIGNAL !\n\n"
-            body += "LIEN DIRECT : https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026\n"
+            body += "=== LIENS DIRECTS ===\n"
+            body += "PAGE ACHAT  : https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026\n"
+            body += "PAGE OFFRE  : https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026\n"
             body += "BILLETTERIE : https://billetterie.psg.fr/fr/\n"
-            body += "QLIC : https://qlic.it/1796571\n\n"
+            body += "TICKETPLACE : https://ticketplace.psg.fr/fr/\n"
+            body += "QLIC        : https://qlic.it/1796571\n\n"
+            body += "=== SIGNAUX DETECTES ===\n\n"
+
             for a in alerts:
               prio = "[CRITIQUE] " if a.get("critical") else ""
               body += f"{prio}Source : {a['name']}\n"
-              body += f"Type : {a['type']}\n"
+              body += f"Type   : {a['type']}\n"
               body += f"Signal : {', '.join(a['nouveaux'])}\n"
               if a["tous"]:
-                body += f"Tous signaux actifs : {', '.join(a['tous'])}\n"
-              body += f"URL : {a['url']}\n\n"
+                body += f"Actifs : {', '.join(a['tous'])}\n"
+              body += f"URL    : {a['url']}\n\n"
+
             has_critical = any(a.get("critical") for a in alerts)
-            subject = "PSG WATCH PARTY — BILLETTERIE OUVERTE ! FONCE !" if has_critical else "PSG WATCH PARTY — Signal detecte"
+            is_vague = any(
+              "VAGUE" in a["type"] or "CHANGEMENT" in a["type"] or
+              any(v in " ".join(a["nouveaux"]).lower() for v in ["vague 2","vague 3","myparis","grand public","ticketplace"])
+              for a in alerts
+            )
+
+            if has_critical and is_vague:
+              subject = "PSG WATCH PARTY — NOUVELLE VAGUE OUVERTE ! FONCE !"
+            elif has_critical:
+              subject = "PSG WATCH PARTY — BILLETTERIE OUVERTE ! FONCE !"
+            else:
+              subject = "PSG WATCH PARTY — Signal detecte"
+
             msg = MIMEMultipart()
             msg["From"] = GMAIL
             msg["To"] = GMAIL
