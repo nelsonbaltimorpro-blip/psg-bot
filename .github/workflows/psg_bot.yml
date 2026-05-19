@@ -50,6 +50,10 @@ jobs:
             "Sec-Fetch-User": "?1",
           }
 
+          # ============================================================
+          # KEYWORDS
+          # ============================================================
+
           SIGNAL_ACHAT = [
             "acheter mes billets",
             "ventes ouvertes pour",
@@ -86,6 +90,7 @@ jobs:
           ]
 
           SIGNAL_CATEGORIES = [
+            # Vague 1 (déjà ouverte — sert juste de référence state)
             "abonnes diffusion - vague 1",
             "abonnés diffusion - vague 1",
             "abonnes - vague 1",
@@ -96,6 +101,7 @@ jobs:
             "hospitalités diffusion",
             "societes diffusion",
             "sociétés diffusion",
+            # Vague 2 — toutes variantes
             "- vague 2",
             "abonnes diffusion - vague 2",
             "abonnés diffusion - vague 2",
@@ -113,6 +119,7 @@ jobs:
             "ventes ouvertes pour : virage",
             "ventes ouvertes pour : club premier",
             "ventes ouvertes pour : le virage",
+            # Vague 3 / MyParis — toutes variantes
             "- vague 3",
             "abonnes diffusion - vague 3",
             "abonnés diffusion - vague 3",
@@ -130,6 +137,7 @@ jobs:
             "vente ouverte pour : my paris premium",
             "ventes ouvertes pour : grand public",
             "vente ouverte pour : grand public",
+            # Autres
             "ventes ouvertes pour : abonnes societes",
             "ventes ouvertes pour : abonnés sociétés",
             "ventes ouvertes pour : cse",
@@ -182,8 +190,12 @@ jobs:
             "nouvelle vague billetterie",
           ]
 
+          # ============================================================
+          # ALWAYS_ALERT — uniquement les mots PAS ENCORE sur la page
+          # Pas "acheter mes billets" ni vague 1 — déjà présents = spam
+          # ============================================================
           ALWAYS_ALERT = [
-            "acheter mes billets",
+            # Vague 2
             "- vague 2",
             "abonnes - vague 2",
             "abonnés - vague 2",
@@ -197,6 +209,11 @@ jobs:
             "ventes ouvertes pour : abonnés historiques",
             "ventes ouvertes pour : abonnes grand public",
             "ventes ouvertes pour : abonnés grand public",
+            "ventes ouvertes pour : tribune",
+            "ventes ouvertes pour : virage",
+            "ventes ouvertes pour : club premier",
+            "ventes ouvertes pour : le virage",
+            # Vague 3 / MyParis
             "- vague 3",
             "abonnes - vague 3",
             "abonnés - vague 3",
@@ -212,11 +229,15 @@ jobs:
             "vente ouverte pour : myparis",
             "ventes ouvertes pour : grand public",
             "vente ouverte pour : grand public",
+            # TicketPlace
             "places disponibles sur ticketplace",
             "billet disponible",
             "billets disponibles",
           ]
 
+          # ============================================================
+          # SOURCES
+          # ============================================================
           TARGETS = [
             {"name": "Billetterie PSG - Catalogue achat diffusion UCL",
              "url": WORKER + "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026",
@@ -304,6 +325,10 @@ jobs:
              "watch_bloc": False},
           ]
 
+          # ============================================================
+          # LOGIQUE DE DÉTECTION
+          # ============================================================
+
           os.makedirs("keywords_state", exist_ok=True)
 
           def extraire_bloc_ventes(text):
@@ -381,6 +406,10 @@ jobs:
 
             return alerts_out
 
+          # ============================================================
+          # SCAN
+          # ============================================================
+
           alerts = []
 
           for t in TARGETS:
@@ -403,6 +432,10 @@ jobs:
                 print(f"OK — {t['name']} — aucun nouveau signal")
             except Exception as e:
               print(f"Erreur {t['name']}: {e}")
+
+          # ============================================================
+          # EMAIL
+          # ============================================================
 
           if alerts:
             alerts.sort(key=lambda x: not x.get("critical", False))
