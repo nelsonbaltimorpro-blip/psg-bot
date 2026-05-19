@@ -50,438 +50,218 @@ jobs:
             "Sec-Fetch-User": "?1",
           }
 
-          SIGNAL_ACHAT = [
-            "acheter mes billets",
-            "ventes ouvertes pour",
-            "vente ouverte pour",
-            "la billetterie est ouverte",
-            "la vente est ouverte",
-            "les billets sont en vente",
-            "les places sont en vente",
-            "disponible a l'achat",
-            "disponible à l'achat",
-            "procurez-vous vos billets",
-            "procurez vous vos billets",
-            "reservez vos places",
-            "réservez vos places",
-            "commandez vos billets",
-            "places disponibles",
-            "stock disponible",
-            "places mises en vente",
-            "mise en vente",
-            "billetterie ouverte",
-            "vente ouverte",
-          ]
+          def extraire_zone_offres(html):
+            soup = BeautifulSoup(html, "html.parser")
+            for tag in soup.find_all(["script", "style", "noscript", "iframe"]):
+              tag.decompose()
+            for tag in soup.find_all(attrs={"class": re.compile(r"nav|header|footer|menu|cookie|banner|social", re.I)}):
+              tag.decompose()
+            text = soup.get_text(separator="\n")
+            lignes = text.split("\n")
+            lignes_nettoyees = []
+            capture = False
+            stops = ["accueil", "nike", "qatar airways", "beyond", "visit qatar", "ooredoo", "copyright"]
+            for ligne in lignes:
+              l = ligne.strip()
+              if not l:
+                continue
+              if not capture and re.search(r"billet|offre|vente|diffusion|hospitalit", l, re.I):
+                capture = True
+              if capture:
+                if any(s in l.lower() for s in stops):
+                  break
+                lignes_nettoyees.append(l)
+            return "\n".join(lignes_nettoyees)
 
-          SIGNAL_PHASES = [
-            "phase 1 ouverte","phase 2 ouverte","phase 3 ouverte",
-            "phase 1 est ouverte","phase 2 est ouverte","phase 3 est ouverte",
-            "ouverture de la phase 1","ouverture de la phase 2","ouverture de la phase 3",
-            "vente phase 1 ouverte","vente phase 2 ouverte","vente phase 3 ouverte",
-            "ouverture phase 1","ouverture phase 2","ouverture phase 3",
-            "ouverture myparis","ouverture my paris",
-            "ouverture myparis premium","ouverture my paris premium",
-            "myparis ouverte","my paris ouverte",
-            "myparis premium ouverte","my paris premium ouverte",
-          ]
+          def nettoyer_texte_media(html):
+            soup = BeautifulSoup(html, "html.parser")
+            for tag in soup.find_all(["script", "style", "noscript"]):
+              tag.decompose()
+            return soup.get_text(separator=" ").lower()
 
-          SIGNAL_CATEGORIES = [
-            "abonnes diffusion - vague 1",
-            "abonnés diffusion - vague 1",
-            "abonnes - vague 1",
-            "abonnés - vague 1",
-            "ventes ouvertes pour : abonnes diffusion",
-            "ventes ouvertes pour : abonnés diffusion",
-            "hospitalites diffusion",
-            "hospitalités diffusion",
-            "societes diffusion",
-            "sociétés diffusion",
-            "- vague 2",
-            "abonnes diffusion - vague 2",
-            "abonnés diffusion - vague 2",
-            "abonnes - vague 2",
-            "abonnés - vague 2",
-            "abonnes historiques - vague 2",
-            "abonnés historiques - vague 2",
-            "ventes ouvertes pour : vague 2",
-            "vente ouverte pour : vague 2",
-            "ventes ouvertes pour : abonnes historiques",
-            "ventes ouvertes pour : abonnés historiques",
-            "ventes ouvertes pour : abonnes grand public",
-            "ventes ouvertes pour : abonnés grand public",
-            "ventes ouvertes pour : tribune",
-            "ventes ouvertes pour : virage",
-            "ventes ouvertes pour : club premier",
-            "ventes ouvertes pour : le virage",
-            "- vague 3",
-            "abonnes diffusion - vague 3",
-            "abonnés diffusion - vague 3",
-            "abonnes - vague 3",
-            "abonnés - vague 3",
-            "ventes ouvertes pour : vague 3",
-            "vente ouverte pour : vague 3",
-            "ventes ouvertes pour : myparis",
-            "ventes ouvertes pour : myparis premium",
-            "ventes ouvertes pour : my paris",
-            "ventes ouvertes pour : my paris premium",
-            "vente ouverte pour : myparis",
-            "vente ouverte pour : myparis premium",
-            "vente ouverte pour : my paris",
-            "vente ouverte pour : my paris premium",
-            "ventes ouvertes pour : grand public",
-            "vente ouverte pour : grand public",
-            "ventes ouvertes pour : abonnes societes",
-            "ventes ouvertes pour : abonnés sociétés",
-            "ventes ouvertes pour : cse",
-            "ventes ouvertes pour : hospitalites",
-            "ventes ouvertes pour : hospitalités",
-            "vente ouverte pour : hospitalites",
-            "vente ouverte pour : hospitalités",
-            "vente ouverte pour : cse",
-          ]
-
-          SIGNAL_PRIX = [
-            "à partir de 9,00","a partir de 9,00",
-            "à partir de 19,00","a partir de 19,00",
-            "à partir de 20,00","a partir de 20,00",
-            "à partir de 25,00","a partir de 25,00",
-            "à partir de 30,00","a partir de 30,00",
-            "à partir de 35,00","a partir de 35,00",
-            "à partir de 40,00","a partir de 40,00",
-            "à partir de 45,00","a partir de 45,00",
-            "à partir de 50,00","a partir de 50,00",
-          ]
-
-          SIGNAL_TICKETPLACE = [
-            "disponible sur ticketplace",
-            "disponible via ticketplace",
-            "revente officielle",
-            "places disponibles sur ticketplace",
-            "places sur ticketplace",
-            "billet disponible",
-            "billets disponibles",
-          ]
-
-          KEYWORDS_BILLETTERIE = (
-            SIGNAL_ACHAT + SIGNAL_PHASES + SIGNAL_CATEGORIES + SIGNAL_PRIX
-          )
-
-          KEYWORDS_MEDIAS = [
-            "billetterie watch party ouverte",
-            "billetterie de la retransmission ouverte",
-            "ouverture billetterie retransmission",
-            "phase 1 ouverte","phase 2 ouverte","phase 3 ouverte",
-            "mise en vente watch party",
-            "watch party billetterie ouverte",
-            "places retransmission disponibles",
-            "ouverture de la phase",
-            "myparis ouverte","my paris ouverte",
-            "myparis premium ouverte","my paris premium ouverte",
-            "ouverture myparis","ouverture my paris",
-            "vague 2 ouverte","vague 3 ouverte",
-            "nouvelle vague billetterie",
-          ]
-
-          ALWAYS_ALERT = [
-            "- vague 2",
-            "abonnes - vague 2",
-            "abonnés - vague 2",
-            "abonnes diffusion - vague 2",
-            "abonnés diffusion - vague 2",
-            "abonnes historiques - vague 2",
-            "abonnés historiques - vague 2",
-            "ventes ouvertes pour : vague 2",
-            "vente ouverte pour : vague 2",
-            "ventes ouvertes pour : abonnes historiques",
-            "ventes ouvertes pour : abonnés historiques",
-            "ventes ouvertes pour : abonnes grand public",
-            "ventes ouvertes pour : abonnés grand public",
-            "ventes ouvertes pour : tribune",
-            "ventes ouvertes pour : virage",
-            "ventes ouvertes pour : club premier",
-            "ventes ouvertes pour : le virage",
-            "- vague 3",
-            "abonnes - vague 3",
-            "abonnés - vague 3",
-            "abonnes diffusion - vague 3",
-            "abonnés diffusion - vague 3",
-            "ventes ouvertes pour : vague 3",
-            "vente ouverte pour : vague 3",
-            "ventes ouvertes pour : myparis premium",
-            "ventes ouvertes pour : myparis",
-            "ventes ouvertes pour : my paris premium",
-            "ventes ouvertes pour : my paris",
-            "vente ouverte pour : myparis premium",
-            "vente ouverte pour : myparis",
-            "ventes ouvertes pour : grand public",
-            "vente ouverte pour : grand public",
-            "places disponibles sur ticketplace",
-            "billet disponible",
-            "billets disponibles",
-          ]
-
-          TARGETS = [
+          TARGETS_CATALOGUE = [
             {"name": "Billetterie PSG - Catalogue achat diffusion UCL",
-             "url": WORKER + "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026",
-             "keywords": KEYWORDS_BILLETTERIE,
-             "critical": True,
-             "always_alert": True,
-             "watch_bloc": True},
+             "url": WORKER + "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026"},
             {"name": "Billetterie PSG - Page offre retransmission",
-             "url": WORKER + "https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026",
-             "keywords": KEYWORDS_BILLETTERIE,
-             "critical": True,
-             "always_alert": True,
-             "watch_bloc": True},
+             "url": WORKER + "https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026"},
+          ]
+
+          KEYWORDS_BACKUP = [
+            "vague 2","vague 3","myparis","my paris","grand public",
+            "nouvelle vague","nouvelle phase","nouvelle offre",
+            "visibilite reduite","visibilité réduite",
+            "pmr","balcon","trophee","trophées",
+            "billet disponible","billets disponibles",
+            "disponible sur ticketplace","places disponibles sur ticketplace",
+            "ouverture billetterie","billetterie ouverte",
+            "mise en vente","vente ouverte",
+          ]
+
+          TARGETS_BACKUP = [
             {"name": "Billetterie PSG principale",
              "url": WORKER + "https://billetterie.psg.fr/fr/",
-             "keywords": SIGNAL_ACHAT + SIGNAL_CATEGORIES + [
-               "retransmission ucl final 2026",
-               "diffusion-de-la-finale-ucl-2026",
-               "watch party","viewing party","diffusion finale",
-             ],
-             "critical": True,
-             "always_alert": True,
-             "watch_bloc": False},
+             "critical": True},
             {"name": "Billetterie PSG listing",
              "url": WORKER + "https://billetterie.psg.fr/fr/listing-events",
-             "keywords": SIGNAL_ACHAT + SIGNAL_CATEGORIES + [
-               "retransmission ucl final 2026",
-               "diffusion-de-la-finale-ucl-2026",
-               "watch party","viewing party","diffusion finale",
-             ],
-             "critical": True,
-             "always_alert": False,
-             "watch_bloc": False},
+             "critical": True},
             {"name": "PSG.fr - Info billetterie diffusion finale",
              "url": "https://www.psg.fr/content/information-billetterie-pour-la-diffusion-de-la-finale-de-ligue-des-champions-psg-arsenal-ucl-parc-des-princes-viewing-party-20252026",
-             "keywords": SIGNAL_PHASES + SIGNAL_ACHAT + SIGNAL_CATEGORIES + [
-               "vague 2","vague 3","myparis premium",
-               "billetterie est ouverte","vente lancee","vente lancée",
-               "les billets sont disponibles","cliquez ici pour acheter",
-               "nouvelle phase",
-             ],
-             "critical": True,
-             "always_alert": False,
-             "watch_bloc": False},
-            {"name": "TicketPlace PSG - Revente diffusion",
+             "critical": True},
+            {"name": "TicketPlace PSG",
              "url": WORKER + "https://ticketplace.psg.fr/fr/",
-             "keywords": SIGNAL_TICKETPLACE + [
-               "finale","diffusion","30 mai","parc des princes",
-               "billet disponible","billets disponibles","places disponibles",
-             ],
-             "critical": True,
-             "always_alert": True,
-             "watch_bloc": False},
+             "critical": True},
             {"name": "Qlic alerte officielle PSG",
              "url": "https://qlic.it/1796571",
-             "keywords": SIGNAL_ACHAT + SIGNAL_PHASES + SIGNAL_CATEGORIES + [
-               "disponible maintenant","nouvelle phase","nouvelle vague",
-             ],
-             "critical": True,
-             "always_alert": False,
-             "watch_bloc": False},
+             "critical": True},
             {"name": "Canal Supporters PSG",
              "url": "https://canal-supporters.com/category/psg-news/",
-             "keywords": KEYWORDS_MEDIAS,
-             "critical": False,
-             "always_alert": False,
-             "watch_bloc": False},
+             "critical": False},
             {"name": "CulturePSG",
              "url": "https://www.culturepsg.com/bg/news/Places",
-             "keywords": KEYWORDS_MEDIAS,
-             "critical": False,
-             "always_alert": False,
-             "watch_bloc": False},
+             "critical": False},
             {"name": "Le Parisien PSG",
              "url": "https://www.leparisien.fr/sports/football/psg/",
-             "keywords": KEYWORDS_MEDIAS,
-             "critical": False,
-             "always_alert": False,
-             "watch_bloc": False},
+             "critical": False},
             {"name": "RMC Sport LDC",
              "url": "https://rmcsport.bfmtv.com/football/ligue-des-champions/",
-             "keywords": KEYWORDS_MEDIAS,
-             "critical": False,
-             "always_alert": False,
-             "watch_bloc": False},
+             "critical": False},
           ]
 
           os.makedirs("keywords_state", exist_ok=True)
 
-          def extraire_bloc_ventes(text):
-            patterns = [
-              r"ventes? ouvertes? pour.{0,300}",
-              r"abonnés?.{0,50}vague.{0,100}",
-              r"abonnés? diffusion.{0,100}",
-              r"hospitalités?.{0,100}",
-            ]
-            blocs = []
-            for p in patterns:
-              m = re.search(p, text, re.IGNORECASE)
-              if m:
-                blocs.append(m.group(0).strip())
-            return " | ".join(blocs)
-
-          def check_target(text, t):
-            text_lower = text.lower()
-            alerts_out = []
-            mots_actuels = sorted([k for k in t["keywords"] if k.lower() in text_lower])
+          def check_catalogue(html, t):
             state_filename = "keywords_state/" + hashlib.md5(t["url"].encode()).hexdigest() + ".json"
-
+            zone_actuelle = extraire_zone_offres(html)
+            hash_actuel = hashlib.md5(zone_actuelle.encode("utf-8")).hexdigest()
             state = {}
             if os.path.exists(state_filename):
               try:
                 with open(state_filename, "r") as f:
-                  data = json.load(f)
-                  if isinstance(data, list):
-                    state = {"mots": data, "bloc_ventes": ""}
-                  else:
-                    state = data
+                  state = json.load(f)
               except:
                 state = {}
-
-            mots_precedents = state.get("mots", [])
-            bloc_precedent = state.get("bloc_ventes", "")
-
-            bloc_actuel = ""
-            changement_bloc = False
-            if t.get("watch_bloc", False):
-              bloc_actuel = extraire_bloc_ventes(text_lower)
-              if bloc_actuel and bloc_precedent and bloc_actuel != bloc_precedent:
-                changement_bloc = True
-
-            nouveaux_mots = [m for m in mots_actuels if m not in mots_precedents]
-            mots_disparus = [m for m in mots_precedents if m not in mots_actuels]
-
-            always_trouves = []
-            if t.get("always_alert", False):
-              always_trouves = [m for m in mots_actuels if m.lower() in [a.lower() for a in ALWAYS_ALERT]]
-
+            hash_precedent = state.get("hash", "")
+            zone_precedente = state.get("zone", "")
+            premier_scan = not hash_precedent
             with open(state_filename, "w") as f:
-              json.dump({
-                "mots": mots_actuels,
-                "bloc_ventes": bloc_actuel if t.get("watch_bloc") else bloc_precedent
-              }, f)
+              json.dump({"hash": hash_actuel, "zone": zone_actuelle}, f)
+            if premier_scan:
+              print(f"  Premier scan enregistre — {len(zone_actuelle)} chars")
+              return []
+            if hash_actuel != hash_precedent:
+              lignes_avant = set(zone_precedente.split("\n"))
+              lignes_apres = set(zone_actuelle.split("\n"))
+              ajoutees = sorted([l for l in lignes_apres - lignes_avant if l.strip()])
+              supprimees = sorted([l for l in lignes_avant - lignes_apres if l.strip()])
+              return [{
+                "zone_avant": zone_precedente,
+                "zone_apres": zone_actuelle,
+                "lignes_ajoutees": ajoutees,
+                "lignes_supprimees": supprimees,
+              }]
+            return []
 
-            if changement_bloc:
-              alerts_out.append({
-                "type": "CHANGEMENT BLOC VENTES — NOUVELLE VAGUE POSSIBLE !",
-                "nouveaux": ["Le contenu du bloc ventes a change sur la page"],
-                "tous": mots_actuels,
-                "bloc_avant": bloc_precedent,
-                "bloc_apres": bloc_actuel,
-                "mots_nouveaux": nouveaux_mots,
-                "mots_disparus": mots_disparus,
-              })
-            if nouveaux_mots and not changement_bloc:
-              alerts_out.append({
-                "type": "NOUVEAU MOT-CLE",
-                "nouveaux": nouveaux_mots,
-                "tous": mots_actuels,
-                "bloc_avant": "",
-                "bloc_apres": "",
-                "mots_nouveaux": nouveaux_mots,
-                "mots_disparus": mots_disparus,
-              })
-            elif not changement_bloc and not nouveaux_mots and always_trouves:
-              alerts_out.append({
-                "type": "VAGUE ACTIVE",
-                "nouveaux": always_trouves,
-                "tous": mots_actuels,
-                "bloc_avant": "",
-                "bloc_apres": "",
-                "mots_nouveaux": [],
-                "mots_disparus": [],
-              })
-
-            return alerts_out
+          def check_backup(html, t):
+            state_filename = "keywords_state/" + hashlib.md5(t["url"].encode()).hexdigest() + ".json"
+            text = nettoyer_texte_media(html)
+            mots_actuels = sorted([k for k in KEYWORDS_BACKUP if k.lower() in text])
+            state = {}
+            if os.path.exists(state_filename):
+              try:
+                with open(state_filename, "r") as f:
+                  state = json.load(f)
+              except:
+                state = {}
+            mots_precedents = state.get("mots", [])
+            with open(state_filename, "w") as f:
+              json.dump({"mots": mots_actuels}, f)
+            nouveaux = [m for m in mots_actuels if m not in mots_precedents]
+            if nouveaux:
+              return [{"nouveaux": nouveaux, "tous": mots_actuels}]
+            return []
 
           alerts = []
 
-          for t in TARGETS:
+          for t in TARGETS_CATALOGUE:
             try:
               r = requests.get(t["url"], headers=HEADERS, timeout=20, allow_redirects=True)
-              text = BeautifulSoup(r.text, "html.parser").get_text(separator=" ")
-              print(f"Scan — {t['name']} — {len(text)} caracteres")
-              results = check_target(text, t)
+              print(f"Scan catalogue — {t['name']} — {len(r.text)} chars")
+              results = check_catalogue(r.text, t)
+              for res in results:
+                alerts.append({"name": t["name"], "url": t["url"], "type": "CATALOGUE", "critical": True, **res})
+                print(f"ALERTE CHANGEMENT — {t['name']}")
+              if not results:
+                print(f"OK — {t['name']} — pas de changement")
+            except Exception as e:
+              print(f"Erreur {t['name']}: {e}")
+
+          for t in TARGETS_BACKUP:
+            try:
+              r = requests.get(t["url"], headers=HEADERS, timeout=20, allow_redirects=True)
+              print(f"Scan backup — {t['name']} — {len(r.text)} chars")
+              results = check_backup(r.text, t)
               for res in results:
                 alerts.append({
-                  "name": t["name"],
-                  "url": t["url"],
-                  "type": res["type"],
-                  "nouveaux": res["nouveaux"],
-                  "tous": res["tous"],
-                  "bloc_avant": res.get("bloc_avant", ""),
-                  "bloc_apres": res.get("bloc_apres", ""),
-                  "mots_nouveaux": res.get("mots_nouveaux", []),
-                  "mots_disparus": res.get("mots_disparus", []),
+                  "name": t["name"], "url": t["url"], "type": "BACKUP",
                   "critical": t.get("critical", False),
+                  "nouveaux": res["nouveaux"], "tous": res["tous"],
+                  "zone_avant": "", "zone_apres": "",
+                  "lignes_ajoutees": res["nouveaux"], "lignes_supprimees": [],
                 })
-                print(f"ALERTE {res['type']} — {t['name']} — {res['nouveaux']}")
+                print(f"ALERTE KEYWORD — {t['name']} — {res['nouveaux']}")
               if not results:
-                print(f"OK — {t['name']} — aucun nouveau signal")
+                print(f"OK — {t['name']} — pas de changement")
             except Exception as e:
               print(f"Erreur {t['name']}: {e}")
 
           if alerts:
             alerts.sort(key=lambda x: not x.get("critical", False))
-
-            body = "BILLETTERIE PSG - NOUVEAU SIGNAL !\n\n"
+            body = "BILLETTERIE PSG - CHANGEMENT DETECTE !\n\n"
             body += "=== LIENS DIRECTS ===\n"
             body += "PAGE ACHAT  : https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026\n"
             body += "PAGE OFFRE  : https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026\n"
             body += "BILLETTERIE : https://billetterie.psg.fr/fr/\n"
             body += "TICKETPLACE : https://ticketplace.psg.fr/fr/\n"
             body += "QLIC        : https://qlic.it/1796571\n\n"
-            body += "=== SIGNAUX DETECTES ===\n\n"
-
+            body += "=== DETAIL DES CHANGEMENTS ===\n\n"
             for a in alerts:
               prio = "[CRITIQUE] " if a.get("critical") else ""
               body += f"{'='*50}\n"
               body += f"{prio}SOURCE : {a['name']}\n"
-              body += f"TYPE   : {a['type']}\n"
               body += f"URL    : {a['url']}\n\n"
-
-              # Ce qui a été détecté
-              if a["mots_nouveaux"]:
-                body += f"NOUVEAUX MOTS DETECTES :\n"
-                for m in a["mots_nouveaux"]:
+              if a["type"] == "CATALOGUE":
+                if a.get("lignes_ajoutees"):
+                  body += "NOUVELLES LIGNES APPARUES :\n"
+                  for l in a["lignes_ajoutees"]:
+                    body += f"  + {l}\n"
+                  body += "\n"
+                if a.get("lignes_supprimees"):
+                  body += "LIGNES DISPARUES :\n"
+                  for l in a["lignes_supprimees"]:
+                    body += f"  - {l}\n"
+                  body += "\n"
+                body += "--- CONTENU AVANT ---\n"
+                body += (a.get("zone_avant") or "(vide)")[:1500]
+                body += "\n\n--- CONTENU APRES ---\n"
+                body += (a.get("zone_apres") or "(vide)")[:1500]
+                body += "\n\n"
+              elif a["type"] == "BACKUP":
+                body += "MOTS DETECTES :\n"
+                for m in a.get("nouveaux", []):
                   body += f"  + {m}\n"
+                if a.get("tous"):
+                  body += "\nTOUS SIGNAUX ACTIFS :\n"
+                  for m in a["tous"]:
+                    body += f"  . {m}\n"
                 body += "\n"
-
-              if a["mots_disparus"]:
-                body += f"MOTS DISPARUS DE LA PAGE :\n"
-                for m in a["mots_disparus"]:
-                  body += f"  - {m}\n"
-                body += "\n"
-
-              # Diff textuel du bloc ventes
-              if a["bloc_avant"] or a["bloc_apres"]:
-                body += f"CONTENU BLOC VENTES AVANT :\n{a['bloc_avant'] if a['bloc_avant'] else '(vide)'}\n\n"
-                body += f"CONTENU BLOC VENTES APRES :\n{a['bloc_apres'] if a['bloc_apres'] else '(vide)'}\n\n"
-
-              # Tous les signaux actifs sur la page
-              if a["tous"]:
-                body += f"TOUS SIGNAUX ACTIFS SUR LA PAGE :\n"
-                for m in a["tous"]:
-                  body += f"  . {m}\n"
-                body += "\n"
-
+            has_catalogue = any(a["type"] == "CATALOGUE" for a in alerts)
             has_critical = any(a.get("critical") for a in alerts)
-            is_vague = any(
-              "VAGUE" in a["type"] or "CHANGEMENT" in a["type"] or
-              any(v in " ".join(a["nouveaux"]).lower() for v in ["vague 2","vague 3","myparis","grand public","ticketplace"])
-              for a in alerts
-            )
-
-            if has_critical and is_vague:
-              subject = "PSG WATCH PARTY — NOUVELLE VAGUE OUVERTE ! FONCE !"
+            if has_catalogue:
+              subject = "PSG WATCH PARTY — CHANGEMENT PAGE CATALOGUE ! FONCE !"
             elif has_critical:
-              subject = "PSG WATCH PARTY — BILLETTERIE OUVERTE ! FONCE !"
+              subject = "PSG WATCH PARTY — SIGNAL CRITIQUE DETECTE !"
             else:
               subject = "PSG WATCH PARTY — Signal detecte"
-
             msg = MIMEMultipart()
             msg["From"] = GMAIL
             msg["To"] = GMAIL
@@ -495,7 +275,7 @@ jobs:
             except Exception as e:
               print(f"Erreur email : {e}")
           else:
-            print("Aucun nouveau signal.")
+            print("Aucun changement detecte.")
           EOF
         env:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
