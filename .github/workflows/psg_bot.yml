@@ -28,7 +28,7 @@ jobs:
         run: |
           python - <<'EOF'
           import smtplib, os, hashlib, json, re
-          from datetime import datetime
+          from datetime import datetime, timezone
           import requests
           from bs4 import BeautifulSoup
           from email.mime.text import MIMEText
@@ -49,14 +49,37 @@ jobs:
 
           TARGETS = [
             {"name": "Catalogue achat diffusion UCL",
-             "url": WORKER + "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026",
-             "type": "catalogue"},
+             "url": WORKER + "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026"},
             {"name": "TicketPlace PSG",
-             "url": WORKER + "https://ticketplace.psg.fr/fr/",
-             "type": "ticketplace"},
+             "url": WORKER + "https://ticketplace.psg.fr/fr/"},
           ]
 
           os.makedirs("keywords_state", exist_ok=True)
+
+          # ============================================================
+          # DÉTECTE SI LA PAGE EST UNE FILE D'ATTENTE OU UNE ERREUR
+          # ============================================================
+
+          def est_page_invalide(html, url_finale):
+            # File d'attente Queue-it
+            if "waitingroom.psg.fr" in url_finale:
+              return True, "FILE D'ATTENTE ACTIVE (Queue-it)"
+            if "waitingroom.psg.fr" in html:
+              return True, "FILE D'ATTENTE ACTIVE (Queue-it)"
+            if "queueittoken" in html.lower():
+              return True, "FILE D'ATTENTE ACTIVE (Queue-it token)"
+            if "too many redirects" in html.lower():
+              return True, "ERREUR REDIRECTIONS"
+            if "erreur" in html.lower() and len(html) < 500:
+              return True, "ERREUR PAGE COURTE"
+            # Page vide ou trop courte pour être réelle
+            if len(html.strip()) < 200:
+              return True, "PAGE TROP COURTE"
+            return False, ""
+
+          # ============================================================
+          # EXTRACTION ZONE OFFRES — nettoie les éléments dynamiques
+          # ============================================================
 
           def extraire_zone_offres(html):
             soup = BeautifulSoup(html, "html.parser")
@@ -64,14 +87,25 @@ jobs:
               tag.decompose()
             for tag in soup.find_all(attrs={"class": re.compile(r"nav|header|footer|menu|cookie|banner|social", re.I)}):
               tag.decompose()
+
             text = soup.get_text(separator="\n")
+
+            # Supprime les tokens dynamiques, timestamps, UUIDs
+            text = re.sub(r'eyJ[A-Za-z0-9+/=._-]{20,}', '', text)
+            text = re.sub(r'[a-f0-9]{32,}', '', text)
+            text = re.sub(r'\d{13}', '', text)  # timestamps ms
+            text = re.sub(r'queueittoken=[^\s&"]+', '', text)
+            text = re.sub(r'enqueuetoken=[^\s&"]+', '', text)
+            text = re.sub(r'https?://[^\s]+', '', text)  # URLs complètes
+
             lignes = text.split("\n")
             lignes_nettoyees = []
             capture = False
             stops = ["accueil", "nike", "qatar airways", "beyond", "visit qatar", "ooredoo", "copyright"]
+
             for ligne in lignes:
               l = ligne.strip()
-              if not l:
+              if not l or len(l) < 2:
                 continue
               if not capture and re.search(r"billet|offre|vente|diffusion|hospitalit", l, re.I):
                 capture = True
@@ -79,14 +113,14 @@ jobs:
                 if any(s in l.lower() for s in stops):
                   break
                 lignes_nettoyees.append(l)
+
             return "\n".join(lignes_nettoyees)
 
           def extraire_prix(zone):
             m = re.search(r"(\d+[,\.]\d+\s*€)", zone)
-            return m.group(1).strip() if m else "inconnu"
+            return m.group(1).strip() if m else ""
 
           def extraire_categories(zone):
-            # Extrait les lignes entre "Ventes ouvertes pour" et le bouton acheter
             m = re.search(r"ventes?\s+ouvertes?\s+pour\s*:?\s*(.*?)(?:acheter|voir toutes)", zone, re.IGNORECASE | re.DOTALL)
             if not m:
               return []
@@ -94,11 +128,14 @@ jobs:
             lignes = [l.strip() for l in bloc.split("\n") if l.strip() and len(l.strip()) > 2]
             return lignes
 
-          def check_page(html, t):
-            state_filename = "keywords_state/" + hashlib.md5(t["url"].encode()).hexdigest() + ".json"
-            zone_actuelle = extraire_zone_offres(html)
-            hash_actuel = hashlib.md5(zone_actuelle.encode("utf-8")).hexdigest()
+          # ============================================================
+          # CHECK
+          # ============================================================
 
+          def check_page(html, url_finale, t):
+            state_filename = "keywords_state/" + hashlib.md5(t["url"].encode()).hexdigest() + ".json"
+
+            # Charge l'état précédent
             state = {}
             if os.path.exists(state_filename):
               try:
@@ -110,25 +147,51 @@ jobs:
             hash_precedent = state.get("hash", "")
             zone_precedente = state.get("zone", "")
             premier_scan = not hash_precedent
+            nb_files_attente = state.get("nb_files_attente", 0)
 
+            # Vérifie si page invalide
+            invalide, raison = est_page_invalide(html, url_finale)
+            if invalide:
+              nb_files_attente += 1
+              with open(state_filename, "w") as f:
+                json.dump({
+                  "hash": hash_precedent,
+                  "zone": zone_precedente,
+                  "nb_files_attente": nb_files_attente,
+                }, f)
+              print(f"  Page invalide ({raison}) — conserve état précédent — {nb_files_attente}x")
+              return None
+
+            # Page valide — extrait la zone offres
+            zone_actuelle = extraire_zone_offres(html)
+            hash_actuel = hashlib.md5(zone_actuelle.encode("utf-8")).hexdigest()
+
+            # Sauvegarde
             with open(state_filename, "w") as f:
-              json.dump({"hash": hash_actuel, "zone": zone_actuelle}, f)
+              json.dump({
+                "hash": hash_actuel,
+                "zone": zone_actuelle,
+                "nb_files_attente": 0,
+              }, f)
 
             if premier_scan:
               print(f"  Premier scan enregistre — {len(zone_actuelle)} chars")
               return None
 
+            if not zone_actuelle.strip():
+              print(f"  Zone vide après nettoyage — skip")
+              return None
+
             if hash_actuel != hash_precedent:
-              lignes_avant = [l for l in zone_precedente.split("\n") if l.strip()]
-              lignes_apres = [l for l in zone_actuelle.split("\n") if l.strip()]
-              set_avant = set(lignes_avant)
-              set_apres = set(lignes_apres)
-              ajoutees = sorted([l for l in set_apres - set_avant])
-              supprimees = sorted([l for l in set_avant - set_apres])
+              lignes_avant = set(zone_precedente.split("\n"))
+              lignes_apres = set(zone_actuelle.split("\n"))
+              ajoutees = sorted([l for l in lignes_apres - lignes_avant if l.strip() and len(l.strip()) > 3])
+              supprimees = sorted([l for l in lignes_avant - lignes_apres if l.strip() and len(l.strip()) > 3])
               cats_avant = extraire_categories(zone_precedente)
               cats_apres = extraire_categories(zone_actuelle)
               prix_avant = extraire_prix(zone_precedente)
               prix_apres = extraire_prix(zone_actuelle)
+
               return {
                 "zone_avant": zone_precedente,
                 "zone_apres": zone_actuelle,
@@ -139,23 +202,33 @@ jobs:
                 "prix_avant": prix_avant,
                 "prix_apres": prix_apres,
               }
+
             return None
 
+          # ============================================================
+          # SCAN
+          # ============================================================
+
           alerts = []
-          heure = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+          heure = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
 
           for t in TARGETS:
             try:
-              r = requests.get(t["url"], headers=HEADERS, timeout=20, allow_redirects=True)
-              print(f"Scan — {t['name']} — {len(r.text)} chars")
-              result = check_page(r.text, t)
+              r = requests.get(t["url"], headers=HEADERS, timeout=25, allow_redirects=True)
+              url_finale = r.url
+              print(f"Scan — {t['name']} — {len(r.text)} chars — URL finale: {url_finale[:80]}")
+              result = check_page(r.text, url_finale, t)
               if result:
                 alerts.append({"target": t, "result": result})
-                print(f"ALERTE — {t['name']}")
+                print(f"ALERTE CHANGEMENT — {t['name']}")
               else:
                 print(f"OK — {t['name']} — pas de changement")
             except Exception as e:
               print(f"Erreur {t['name']}: {e}")
+
+          # ============================================================
+          # EMAIL
+          # ============================================================
 
           if alerts:
             for a in alerts:
@@ -168,12 +241,11 @@ jobs:
               supprimees = res["lignes_supprimees"]
               prix_avant = res["prix_avant"]
               prix_apres = res["prix_apres"]
-              prix_change = prix_avant != prix_apres
+              prix_change = prix_avant and prix_apres and prix_avant != prix_apres
 
               nouvelles_cats = [c for c in cats_apres if c not in cats_avant]
               cats_disparues = [c for c in cats_avant if c not in cats_apres]
 
-              # Sujet email
               if nouvelles_cats:
                 subject = "PSG WATCH PARTY — NOUVELLE VAGUE OUVERTE ! FONCE !"
               elif prix_change:
@@ -181,19 +253,18 @@ jobs:
               else:
                 subject = "PSG WATCH PARTY — CHANGEMENT DETECTE SUR LA PAGE !"
 
-              # Corps du mail
               body = ""
               body += "=" * 50 + "\n"
               body += "  PSG WATCH PARTY — CHANGEMENT DETECTE\n"
               body += "=" * 50 + "\n\n"
               body += f"HEURE     : {heure}\n"
-              body += f"PAGE      : {t['name']}\n"
-              body += f"URL ACHAT : https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026\n"
-              body += f"TICKETPLACE : https://ticketplace.psg.fr/fr/\n\n"
+              body += f"PAGE      : {t['name']}\n\n"
+              body += "=== LIENS ===\n"
+              body += "ACHAT     : https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026\n"
+              body += "TICKETPLACE: https://ticketplace.psg.fr/fr/\n\n"
 
-              # Résumé principal
               body += "-" * 50 + "\n"
-              body += "  RESUME DU CHANGEMENT\n"
+              body += "  RESUME\n"
               body += "-" * 50 + "\n\n"
 
               if nouvelles_cats:
@@ -209,46 +280,41 @@ jobs:
                 body += "\n"
 
               if prix_change:
-                body += f"CHANGEMENT DE PRIX : {prix_avant} -> {prix_apres}\n\n"
-              else:
+                body += f"PRIX : {prix_avant} -> {prix_apres}\n\n"
+              elif prix_apres:
                 body += f"PRIX : {prix_apres} (inchange)\n\n"
 
-              # Ventes ouvertes avant / après
               if cats_avant or cats_apres:
                 body += "-" * 50 + "\n"
                 body += "  VENTES OUVERTES POUR\n"
                 body += "-" * 50 + "\n\n"
                 body += "AVANT :\n"
-                if cats_avant:
-                  for c in cats_avant:
-                    body += f"  • {c}\n"
-                else:
+                for c in cats_avant:
+                  body += f"  • {c}\n"
+                if not cats_avant:
                   body += "  (aucune)\n"
                 body += "\nAPRES :\n"
-                if cats_apres:
-                  for c in cats_apres:
-                    body += f"  • {c}\n"
-                else:
+                for c in cats_apres:
+                  body += f"  • {c}\n"
+                if not cats_apres:
                   body += "  (aucune)\n"
                 body += "\n"
 
-              # Toutes les lignes ajoutées / supprimées
               if ajoutees or supprimees:
                 body += "-" * 50 + "\n"
                 body += "  TOUTES LES MODIFICATIONS\n"
                 body += "-" * 50 + "\n\n"
                 if ajoutees:
                   body += "LIGNES APPARUES :\n"
-                  for l in ajoutees:
+                  for l in ajoutees[:30]:
                     body += f"  + {l}\n"
                   body += "\n"
                 if supprimees:
                   body += "LIGNES DISPARUES :\n"
-                  for l in supprimees:
+                  for l in supprimees[:30]:
                     body += f"  - {l}\n"
                   body += "\n"
 
-              # Contenu complet avant / après
               body += "-" * 50 + "\n"
               body += "  CONTENU COMPLET\n"
               body += "-" * 50 + "\n\n"
