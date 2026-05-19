@@ -28,6 +28,7 @@ jobs:
         run: |
           python - <<'EOF'
           import smtplib, os, hashlib, json, re
+          from datetime import datetime
           import requests
           from bs4 import BeautifulSoup
           from email.mime.text import MIMEText
@@ -44,11 +45,18 @@ jobs:
             "Accept-Encoding": "gzip, deflate, br",
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
           }
+
+          TARGETS = [
+            {"name": "Catalogue achat diffusion UCL",
+             "url": WORKER + "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026",
+             "type": "catalogue"},
+            {"name": "TicketPlace PSG",
+             "url": WORKER + "https://ticketplace.psg.fr/fr/",
+             "type": "ticketplace"},
+          ]
+
+          os.makedirs("keywords_state", exist_ok=True)
 
           def extraire_zone_offres(html):
             soup = BeautifulSoup(html, "html.parser")
@@ -73,66 +81,24 @@ jobs:
                 lignes_nettoyees.append(l)
             return "\n".join(lignes_nettoyees)
 
-          def nettoyer_texte_media(html):
-            soup = BeautifulSoup(html, "html.parser")
-            for tag in soup.find_all(["script", "style", "noscript"]):
-              tag.decompose()
-            return soup.get_text(separator=" ").lower()
+          def extraire_prix(zone):
+            m = re.search(r"(\d+[,\.]\d+\s*€)", zone)
+            return m.group(1).strip() if m else "inconnu"
 
-          TARGETS_CATALOGUE = [
-            {"name": "Billetterie PSG - Catalogue achat diffusion UCL",
-             "url": WORKER + "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026"},
-            {"name": "Billetterie PSG - Page offre retransmission",
-             "url": WORKER + "https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026"},
-          ]
+          def extraire_categories(zone):
+            # Extrait les lignes entre "Ventes ouvertes pour" et le bouton acheter
+            m = re.search(r"ventes?\s+ouvertes?\s+pour\s*:?\s*(.*?)(?:acheter|voir toutes)", zone, re.IGNORECASE | re.DOTALL)
+            if not m:
+              return []
+            bloc = m.group(1)
+            lignes = [l.strip() for l in bloc.split("\n") if l.strip() and len(l.strip()) > 2]
+            return lignes
 
-          KEYWORDS_BACKUP = [
-            "vague 2","vague 3","myparis","my paris","grand public",
-            "nouvelle vague","nouvelle phase","nouvelle offre",
-            "visibilite reduite","visibilité réduite",
-            "pmr","balcon","trophee","trophées",
-            "billet disponible","billets disponibles",
-            "disponible sur ticketplace","places disponibles sur ticketplace",
-            "ouverture billetterie","billetterie ouverte",
-            "mise en vente","vente ouverte",
-          ]
-
-          TARGETS_BACKUP = [
-            {"name": "Billetterie PSG principale",
-             "url": WORKER + "https://billetterie.psg.fr/fr/",
-             "critical": True},
-            {"name": "Billetterie PSG listing",
-             "url": WORKER + "https://billetterie.psg.fr/fr/listing-events",
-             "critical": True},
-            {"name": "PSG.fr - Info billetterie diffusion finale",
-             "url": "https://www.psg.fr/content/information-billetterie-pour-la-diffusion-de-la-finale-de-ligue-des-champions-psg-arsenal-ucl-parc-des-princes-viewing-party-20252026",
-             "critical": True},
-            {"name": "TicketPlace PSG",
-             "url": WORKER + "https://ticketplace.psg.fr/fr/",
-             "critical": True},
-            {"name": "Qlic alerte officielle PSG",
-             "url": "https://qlic.it/1796571",
-             "critical": True},
-            {"name": "Canal Supporters PSG",
-             "url": "https://canal-supporters.com/category/psg-news/",
-             "critical": False},
-            {"name": "CulturePSG",
-             "url": "https://www.culturepsg.com/bg/news/Places",
-             "critical": False},
-            {"name": "Le Parisien PSG",
-             "url": "https://www.leparisien.fr/sports/football/psg/",
-             "critical": False},
-            {"name": "RMC Sport LDC",
-             "url": "https://rmcsport.bfmtv.com/football/ligue-des-champions/",
-             "critical": False},
-          ]
-
-          os.makedirs("keywords_state", exist_ok=True)
-
-          def check_catalogue(html, t):
+          def check_page(html, t):
             state_filename = "keywords_state/" + hashlib.md5(t["url"].encode()).hexdigest() + ".json"
             zone_actuelle = extraire_zone_offres(html)
             hash_actuel = hashlib.md5(zone_actuelle.encode("utf-8")).hexdigest()
+
             state = {}
             if os.path.exists(state_filename):
               try:
@@ -140,140 +106,170 @@ jobs:
                   state = json.load(f)
               except:
                 state = {}
+
             hash_precedent = state.get("hash", "")
             zone_precedente = state.get("zone", "")
             premier_scan = not hash_precedent
+
             with open(state_filename, "w") as f:
               json.dump({"hash": hash_actuel, "zone": zone_actuelle}, f)
+
             if premier_scan:
               print(f"  Premier scan enregistre — {len(zone_actuelle)} chars")
-              return []
+              return None
+
             if hash_actuel != hash_precedent:
-              lignes_avant = set(zone_precedente.split("\n"))
-              lignes_apres = set(zone_actuelle.split("\n"))
-              ajoutees = sorted([l for l in lignes_apres - lignes_avant if l.strip()])
-              supprimees = sorted([l for l in lignes_avant - lignes_apres if l.strip()])
-              return [{
+              lignes_avant = [l for l in zone_precedente.split("\n") if l.strip()]
+              lignes_apres = [l for l in zone_actuelle.split("\n") if l.strip()]
+              set_avant = set(lignes_avant)
+              set_apres = set(lignes_apres)
+              ajoutees = sorted([l for l in set_apres - set_avant])
+              supprimees = sorted([l for l in set_avant - set_apres])
+              cats_avant = extraire_categories(zone_precedente)
+              cats_apres = extraire_categories(zone_actuelle)
+              prix_avant = extraire_prix(zone_precedente)
+              prix_apres = extraire_prix(zone_actuelle)
+              return {
                 "zone_avant": zone_precedente,
                 "zone_apres": zone_actuelle,
                 "lignes_ajoutees": ajoutees,
                 "lignes_supprimees": supprimees,
-              }]
-            return []
-
-          def check_backup(html, t):
-            state_filename = "keywords_state/" + hashlib.md5(t["url"].encode()).hexdigest() + ".json"
-            text = nettoyer_texte_media(html)
-            mots_actuels = sorted([k for k in KEYWORDS_BACKUP if k.lower() in text])
-            state = {}
-            if os.path.exists(state_filename):
-              try:
-                with open(state_filename, "r") as f:
-                  state = json.load(f)
-              except:
-                state = {}
-            mots_precedents = state.get("mots", [])
-            with open(state_filename, "w") as f:
-              json.dump({"mots": mots_actuels}, f)
-            nouveaux = [m for m in mots_actuels if m not in mots_precedents]
-            if nouveaux:
-              return [{"nouveaux": nouveaux, "tous": mots_actuels}]
-            return []
+                "cats_avant": cats_avant,
+                "cats_apres": cats_apres,
+                "prix_avant": prix_avant,
+                "prix_apres": prix_apres,
+              }
+            return None
 
           alerts = []
+          heure = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
 
-          for t in TARGETS_CATALOGUE:
+          for t in TARGETS:
             try:
               r = requests.get(t["url"], headers=HEADERS, timeout=20, allow_redirects=True)
-              print(f"Scan catalogue — {t['name']} — {len(r.text)} chars")
-              results = check_catalogue(r.text, t)
-              for res in results:
-                alerts.append({"name": t["name"], "url": t["url"], "type": "CATALOGUE", "critical": True, **res})
-                print(f"ALERTE CHANGEMENT — {t['name']}")
-              if not results:
-                print(f"OK — {t['name']} — pas de changement")
-            except Exception as e:
-              print(f"Erreur {t['name']}: {e}")
-
-          for t in TARGETS_BACKUP:
-            try:
-              r = requests.get(t["url"], headers=HEADERS, timeout=20, allow_redirects=True)
-              print(f"Scan backup — {t['name']} — {len(r.text)} chars")
-              results = check_backup(r.text, t)
-              for res in results:
-                alerts.append({
-                  "name": t["name"], "url": t["url"], "type": "BACKUP",
-                  "critical": t.get("critical", False),
-                  "nouveaux": res["nouveaux"], "tous": res["tous"],
-                  "zone_avant": "", "zone_apres": "",
-                  "lignes_ajoutees": res["nouveaux"], "lignes_supprimees": [],
-                })
-                print(f"ALERTE KEYWORD — {t['name']} — {res['nouveaux']}")
-              if not results:
+              print(f"Scan — {t['name']} — {len(r.text)} chars")
+              result = check_page(r.text, t)
+              if result:
+                alerts.append({"target": t, "result": result})
+                print(f"ALERTE — {t['name']}")
+              else:
                 print(f"OK — {t['name']} — pas de changement")
             except Exception as e:
               print(f"Erreur {t['name']}: {e}")
 
           if alerts:
-            alerts.sort(key=lambda x: not x.get("critical", False))
-            body = "BILLETTERIE PSG - CHANGEMENT DETECTE !\n\n"
-            body += "=== LIENS DIRECTS ===\n"
-            body += "PAGE ACHAT  : https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026\n"
-            body += "PAGE OFFRE  : https://billetterie.psg.fr/fr/offres/retransmission-ucl-final-2026\n"
-            body += "BILLETTERIE : https://billetterie.psg.fr/fr/\n"
-            body += "TICKETPLACE : https://ticketplace.psg.fr/fr/\n"
-            body += "QLIC        : https://qlic.it/1796571\n\n"
-            body += "=== DETAIL DES CHANGEMENTS ===\n\n"
             for a in alerts:
-              prio = "[CRITIQUE] " if a.get("critical") else ""
-              body += f"{'='*50}\n"
-              body += f"{prio}SOURCE : {a['name']}\n"
-              body += f"URL    : {a['url']}\n\n"
-              if a["type"] == "CATALOGUE":
-                if a.get("lignes_ajoutees"):
-                  body += "NOUVELLES LIGNES APPARUES :\n"
-                  for l in a["lignes_ajoutees"]:
+              t = a["target"]
+              res = a["result"]
+
+              cats_avant = res["cats_avant"]
+              cats_apres = res["cats_apres"]
+              ajoutees = res["lignes_ajoutees"]
+              supprimees = res["lignes_supprimees"]
+              prix_avant = res["prix_avant"]
+              prix_apres = res["prix_apres"]
+              prix_change = prix_avant != prix_apres
+
+              nouvelles_cats = [c for c in cats_apres if c not in cats_avant]
+              cats_disparues = [c for c in cats_avant if c not in cats_apres]
+
+              # Sujet email
+              if nouvelles_cats:
+                subject = "PSG WATCH PARTY — NOUVELLE VAGUE OUVERTE ! FONCE !"
+              elif prix_change:
+                subject = "PSG WATCH PARTY — CHANGEMENT DE PRIX !"
+              else:
+                subject = "PSG WATCH PARTY — CHANGEMENT DETECTE SUR LA PAGE !"
+
+              # Corps du mail
+              body = ""
+              body += "=" * 50 + "\n"
+              body += "  PSG WATCH PARTY — CHANGEMENT DETECTE\n"
+              body += "=" * 50 + "\n\n"
+              body += f"HEURE     : {heure}\n"
+              body += f"PAGE      : {t['name']}\n"
+              body += f"URL ACHAT : https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026\n"
+              body += f"TICKETPLACE : https://ticketplace.psg.fr/fr/\n\n"
+
+              # Résumé principal
+              body += "-" * 50 + "\n"
+              body += "  RESUME DU CHANGEMENT\n"
+              body += "-" * 50 + "\n\n"
+
+              if nouvelles_cats:
+                body += "NOUVELLES CATEGORIES OUVERTES :\n"
+                for c in nouvelles_cats:
+                  body += f"  >>> {c} <<<\n"
+                body += "\n"
+
+              if cats_disparues:
+                body += "CATEGORIES FERMEES :\n"
+                for c in cats_disparues:
+                  body += f"  --- {c}\n"
+                body += "\n"
+
+              if prix_change:
+                body += f"CHANGEMENT DE PRIX : {prix_avant} -> {prix_apres}\n\n"
+              else:
+                body += f"PRIX : {prix_apres} (inchange)\n\n"
+
+              # Ventes ouvertes avant / après
+              if cats_avant or cats_apres:
+                body += "-" * 50 + "\n"
+                body += "  VENTES OUVERTES POUR\n"
+                body += "-" * 50 + "\n\n"
+                body += "AVANT :\n"
+                if cats_avant:
+                  for c in cats_avant:
+                    body += f"  • {c}\n"
+                else:
+                  body += "  (aucune)\n"
+                body += "\nAPRES :\n"
+                if cats_apres:
+                  for c in cats_apres:
+                    body += f"  • {c}\n"
+                else:
+                  body += "  (aucune)\n"
+                body += "\n"
+
+              # Toutes les lignes ajoutées / supprimées
+              if ajoutees or supprimees:
+                body += "-" * 50 + "\n"
+                body += "  TOUTES LES MODIFICATIONS\n"
+                body += "-" * 50 + "\n\n"
+                if ajoutees:
+                  body += "LIGNES APPARUES :\n"
+                  for l in ajoutees:
                     body += f"  + {l}\n"
                   body += "\n"
-                if a.get("lignes_supprimees"):
+                if supprimees:
                   body += "LIGNES DISPARUES :\n"
-                  for l in a["lignes_supprimees"]:
+                  for l in supprimees:
                     body += f"  - {l}\n"
                   body += "\n"
-                body += "--- CONTENU AVANT ---\n"
-                body += (a.get("zone_avant") or "(vide)")[:1500]
-                body += "\n\n--- CONTENU APRES ---\n"
-                body += (a.get("zone_apres") or "(vide)")[:1500]
-                body += "\n\n"
-              elif a["type"] == "BACKUP":
-                body += "MOTS DETECTES :\n"
-                for m in a.get("nouveaux", []):
-                  body += f"  + {m}\n"
-                if a.get("tous"):
-                  body += "\nTOUS SIGNAUX ACTIFS :\n"
-                  for m in a["tous"]:
-                    body += f"  . {m}\n"
-                body += "\n"
-            has_catalogue = any(a["type"] == "CATALOGUE" for a in alerts)
-            has_critical = any(a.get("critical") for a in alerts)
-            if has_catalogue:
-              subject = "PSG WATCH PARTY — CHANGEMENT PAGE CATALOGUE ! FONCE !"
-            elif has_critical:
-              subject = "PSG WATCH PARTY — SIGNAL CRITIQUE DETECTE !"
-            else:
-              subject = "PSG WATCH PARTY — Signal detecte"
-            msg = MIMEMultipart()
-            msg["From"] = GMAIL
-            msg["To"] = GMAIL
-            msg["Subject"] = subject
-            msg.attach(MIMEText(body, "plain", "utf-8"))
-            try:
-              with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-                s.login(GMAIL, PASSWORD)
-                s.send_message(msg)
-              print("Email envoye !")
-            except Exception as e:
-              print(f"Erreur email : {e}")
+
+              # Contenu complet avant / après
+              body += "-" * 50 + "\n"
+              body += "  CONTENU COMPLET\n"
+              body += "-" * 50 + "\n\n"
+              body += "--- AVANT ---\n"
+              body += (res["zone_avant"] or "(vide)")[:2000]
+              body += "\n\n--- APRES ---\n"
+              body += (res["zone_apres"] or "(vide)")[:2000]
+              body += "\n"
+
+              msg = MIMEMultipart()
+              msg["From"] = GMAIL
+              msg["To"] = GMAIL
+              msg["Subject"] = subject
+              msg.attach(MIMEText(body, "plain", "utf-8"))
+              try:
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+                  s.login(GMAIL, PASSWORD)
+                  s.send_message(msg)
+                print(f"Email envoye — {subject}")
+              except Exception as e:
+                print(f"Erreur email : {e}")
           else:
             print("Aucun changement detecte.")
           EOF
