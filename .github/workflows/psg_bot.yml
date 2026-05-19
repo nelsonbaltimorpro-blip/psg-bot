@@ -50,10 +50,6 @@ jobs:
             "Sec-Fetch-User": "?1",
           }
 
-          # ============================================================
-          # KEYWORDS
-          # ============================================================
-
           SIGNAL_ACHAT = [
             "acheter mes billets",
             "ventes ouvertes pour",
@@ -90,7 +86,6 @@ jobs:
           ]
 
           SIGNAL_CATEGORIES = [
-            # Vague 1 (déjà ouverte — sert juste de référence state)
             "abonnes diffusion - vague 1",
             "abonnés diffusion - vague 1",
             "abonnes - vague 1",
@@ -101,7 +96,6 @@ jobs:
             "hospitalités diffusion",
             "societes diffusion",
             "sociétés diffusion",
-            # Vague 2 — toutes variantes
             "- vague 2",
             "abonnes diffusion - vague 2",
             "abonnés diffusion - vague 2",
@@ -119,7 +113,6 @@ jobs:
             "ventes ouvertes pour : virage",
             "ventes ouvertes pour : club premier",
             "ventes ouvertes pour : le virage",
-            # Vague 3 / MyParis — toutes variantes
             "- vague 3",
             "abonnes diffusion - vague 3",
             "abonnés diffusion - vague 3",
@@ -137,7 +130,6 @@ jobs:
             "vente ouverte pour : my paris premium",
             "ventes ouvertes pour : grand public",
             "vente ouverte pour : grand public",
-            # Autres
             "ventes ouvertes pour : abonnes societes",
             "ventes ouvertes pour : abonnés sociétés",
             "ventes ouvertes pour : cse",
@@ -190,12 +182,7 @@ jobs:
             "nouvelle vague billetterie",
           ]
 
-          # ============================================================
-          # ALWAYS_ALERT — uniquement les mots PAS ENCORE sur la page
-          # Pas "acheter mes billets" ni vague 1 — déjà présents = spam
-          # ============================================================
           ALWAYS_ALERT = [
-            # Vague 2
             "- vague 2",
             "abonnes - vague 2",
             "abonnés - vague 2",
@@ -213,7 +200,6 @@ jobs:
             "ventes ouvertes pour : virage",
             "ventes ouvertes pour : club premier",
             "ventes ouvertes pour : le virage",
-            # Vague 3 / MyParis
             "- vague 3",
             "abonnes - vague 3",
             "abonnés - vague 3",
@@ -229,15 +215,11 @@ jobs:
             "vente ouverte pour : myparis",
             "ventes ouvertes pour : grand public",
             "vente ouverte pour : grand public",
-            # TicketPlace
             "places disponibles sur ticketplace",
             "billet disponible",
             "billets disponibles",
           ]
 
-          # ============================================================
-          # SOURCES
-          # ============================================================
           TARGETS = [
             {"name": "Billetterie PSG - Catalogue achat diffusion UCL",
              "url": WORKER + "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-diffusion-de-la-finale-ucl-2026",
@@ -325,10 +307,6 @@ jobs:
              "watch_bloc": False},
           ]
 
-          # ============================================================
-          # LOGIQUE DE DÉTECTION
-          # ============================================================
-
           os.makedirs("keywords_state", exist_ok=True)
 
           def extraire_bloc_ventes(text):
@@ -374,6 +352,7 @@ jobs:
                 changement_bloc = True
 
             nouveaux_mots = [m for m in mots_actuels if m not in mots_precedents]
+            mots_disparus = [m for m in mots_precedents if m not in mots_actuels]
 
             always_trouves = []
             if t.get("always_alert", False):
@@ -390,25 +369,33 @@ jobs:
                 "type": "CHANGEMENT BLOC VENTES — NOUVELLE VAGUE POSSIBLE !",
                 "nouveaux": ["Le contenu du bloc ventes a change sur la page"],
                 "tous": mots_actuels,
+                "bloc_avant": bloc_precedent,
+                "bloc_apres": bloc_actuel,
+                "mots_nouveaux": nouveaux_mots,
+                "mots_disparus": mots_disparus,
               })
-            if nouveaux_mots:
+            if nouveaux_mots and not changement_bloc:
               alerts_out.append({
                 "type": "NOUVEAU MOT-CLE",
                 "nouveaux": nouveaux_mots,
                 "tous": mots_actuels,
+                "bloc_avant": "",
+                "bloc_apres": "",
+                "mots_nouveaux": nouveaux_mots,
+                "mots_disparus": mots_disparus,
               })
-            elif not changement_bloc and always_trouves:
+            elif not changement_bloc and not nouveaux_mots and always_trouves:
               alerts_out.append({
                 "type": "VAGUE ACTIVE",
                 "nouveaux": always_trouves,
                 "tous": mots_actuels,
+                "bloc_avant": "",
+                "bloc_apres": "",
+                "mots_nouveaux": [],
+                "mots_disparus": [],
               })
 
             return alerts_out
-
-          # ============================================================
-          # SCAN
-          # ============================================================
 
           alerts = []
 
@@ -425,6 +412,10 @@ jobs:
                   "type": res["type"],
                   "nouveaux": res["nouveaux"],
                   "tous": res["tous"],
+                  "bloc_avant": res.get("bloc_avant", ""),
+                  "bloc_apres": res.get("bloc_apres", ""),
+                  "mots_nouveaux": res.get("mots_nouveaux", []),
+                  "mots_disparus": res.get("mots_disparus", []),
                   "critical": t.get("critical", False),
                 })
                 print(f"ALERTE {res['type']} — {t['name']} — {res['nouveaux']}")
@@ -432,10 +423,6 @@ jobs:
                 print(f"OK — {t['name']} — aucun nouveau signal")
             except Exception as e:
               print(f"Erreur {t['name']}: {e}")
-
-          # ============================================================
-          # EMAIL
-          # ============================================================
 
           if alerts:
             alerts.sort(key=lambda x: not x.get("critical", False))
@@ -451,12 +438,35 @@ jobs:
 
             for a in alerts:
               prio = "[CRITIQUE] " if a.get("critical") else ""
-              body += f"{prio}Source : {a['name']}\n"
-              body += f"Type   : {a['type']}\n"
-              body += f"Signal : {', '.join(a['nouveaux'])}\n"
-              if a["tous"]:
-                body += f"Actifs : {', '.join(a['tous'])}\n"
+              body += f"{'='*50}\n"
+              body += f"{prio}SOURCE : {a['name']}\n"
+              body += f"TYPE   : {a['type']}\n"
               body += f"URL    : {a['url']}\n\n"
+
+              # Ce qui a été détecté
+              if a["mots_nouveaux"]:
+                body += f"NOUVEAUX MOTS DETECTES :\n"
+                for m in a["mots_nouveaux"]:
+                  body += f"  + {m}\n"
+                body += "\n"
+
+              if a["mots_disparus"]:
+                body += f"MOTS DISPARUS DE LA PAGE :\n"
+                for m in a["mots_disparus"]:
+                  body += f"  - {m}\n"
+                body += "\n"
+
+              # Diff textuel du bloc ventes
+              if a["bloc_avant"] or a["bloc_apres"]:
+                body += f"CONTENU BLOC VENTES AVANT :\n{a['bloc_avant'] if a['bloc_avant'] else '(vide)'}\n\n"
+                body += f"CONTENU BLOC VENTES APRES :\n{a['bloc_apres'] if a['bloc_apres'] else '(vide)'}\n\n"
+
+              # Tous les signaux actifs sur la page
+              if a["tous"]:
+                body += f"TOUS SIGNAUX ACTIFS SUR LA PAGE :\n"
+                for m in a["tous"]:
+                  body += f"  . {m}\n"
+                body += "\n"
 
             has_critical = any(a.get("critical") for a in alerts)
             is_vague = any(
